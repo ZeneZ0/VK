@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page_name }} | VK Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .coming-soon {
+            text-align: center;
+            padding: 80px 20px;
+        }
+        .coming-soon h1 {
+            font-size: 48px;
+            color: #007bff;
+            margin-bottom: 20px;
+        }
+        .coming-soon p {
+            font-size: 18px;
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .sidebar ul li a {
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <div class="sidebar">
+                <h3>VK Manager</h3>
+                <ul>
+                    <li><a href="/">Главная</a></li>
+                    <li><a href="/profile">Редактировать профиль</a></li>
+                    <li><a href="/screenshots">Отправить скрины в тг</a></li>
+                    <li><a href="/tokens">Управление VK токенами</a></li>
+                    <li><a href="/posts">Создать посты</a></li>
+                    <li><a href="/reposts_wall">Создать репосты (на стену)</a></li>
+                    <li><a href="/reposts_dm">Создать репосты (в лс)</a></li>
+                    <li><a href="/comments">Создать комментарии</a></li>
+                    <li><a href="/likes">Поставить лайки</a></li>
+                    <li><a href="/subscribe_group">Подписаться на группу</a></li>
+                    <li><a href="/statistics">Статистика</a></li>
+                </ul>
+            </div>
+
+            <div class="content">
+                <div class="coming-soon">
+                    <h1>🚧 В разработке</h1>
+                    <p>Страница <strong>{{ page_name }}</strong> скоро появится</p>
+                    <a href="/" class="btn">Вернуться на главную</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+    <script>
+        const token = getToken();
+        if (!token) {
+            window.location.href = '/login';
+        }
+    </script>
+</body>
+</html>

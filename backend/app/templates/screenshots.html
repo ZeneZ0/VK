@@ -61,199 +61,173 @@
             border-color: #007bff;
             background: #f0f7ff;
         }
-        .error-message {
-            color: #dc3545;
-            padding: 12px;
-            background: #f8d7da;
-            border-radius: 8px;
-            margin: 15px 0;
-            display: none;
+        .sidebar ul li a {
+            text-decoration: none;
+            color: inherit;
+            display: block;
         }
     </style>
 </head>
 <body>
     <div id="app">
         <div class="container">
-            <!-- Боковое меню -->
             <div class="sidebar">
                 <h3>VK Manager</h3>
                 <ul>
-                    <li>Редактировать профиль</li>
-                    <li class="active">Отправить скрины в тг</li>
-                    <li>Управление VK токенами</li>
-                    <li>Создать посты</li>
-                    <li>Создать репосты (на стену)</li>
-                    <li>Создать репосты (в лс)</li>
-                    <li>Создать комментарии</li>
-                    <li>Поставить лайки</li>
-                    <li>Подписаться на группу</li>
-                    <li>Статистика</li>
+                    <li><a href="/">Главная</a></li>
+                    <li><a href="/profile">Редактировать профиль</a></li>
+                    <li class="active"><a href="/screenshots">Отправить скрины в тг</a></li>
+                    <li><a href="/tokens">Управление VK токенами</a></li>
+                    <li><a href="/posts">Создать посты</a></li>
+                    <li><a href="/reposts_wall">Создать репосты (на стену)</a></li>
+                    <li><a href="/reposts_dm">Создать репосты (в лс)</a></li>
+                    <li><a href="/comments">Создать комментарии</a></li>
+                    <li><a href="/likes">Поставить лайки</a></li>
+                    <li><a href="/subscribe_group">Подписаться на группу</a></li>
+                    <li><a href="/statistics">Статистика</a></li>
                 </ul>
             </div>
 
-            <!-- Основной контент -->
             <div class="content" id="screenshots-content">
-                <h1 class="page-title">Telegram публикация файлов</h1>
-                <div class="page-subtitle">Публикуйте файлы через ваших Telegram ботов</div>
-                <hr>
-
-                <!-- Информация о подписке (заглушка) -->
-                <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                    ⚠️ Подписка истекла. <a href="#" style="color: #007bff;">Оформите новую.</a>
-                </div>
-
-                <div id="screenshots-data">
-                    <!-- Загрузка... -->
-                </div>
+                <div id="screenshots-data">Загрузка...</div>
             </div>
         </div>
     </div>
 
     <script src="/static/app.js"></script>
     <script>
+        let selectedFiles = [];
+        let distributionMode = 'fair';
+
         (async function() {
             const token = getToken();
             if (!token) {
-                document.getElementById('screenshots-content').innerHTML = '❌ Вы не авторизованы. <a href="/login">Войти</a>';
+                window.location.href = '/login';
                 return;
             }
 
-            // Состояние приложения
-            let selectedFiles = [];
-            let distributionMode = 'fair'; // 'fair' или 'all'
+            render();
+        })();
 
-            // Функция для отображения интерфейса
-            function render() {
-                const container = document.getElementById('screenshots-data');
-                
-                // Генерируем HTML
-                let filesHtml = '';
-                if (selectedFiles.length === 0) {
-                    filesHtml = '<p>Файлы не выбраны</p>';
-                } else {
-                    filesHtml = '<div class="file-list">';
-                    selectedFiles.forEach((file, index) => {
-                        const size = (file.size / 1024).toFixed(2) + ' KB';
-                        filesHtml += `
-                            <div class="file-item">
-                                <span class="file-name">${file.name}</span>
-                                <span class="file-size">${size}</span>
-                                <span class="remove-file" onclick="removeFile(${index})">✕</span>
-                            </div>
-                        `;
-                    });
-                    filesHtml += '</div>';
-                }
-
-                container.innerHTML = `
-                    <!-- Зона загрузки -->
-                    <div class="card">
-                        <h3>Выберите файлы</h3>
-                        <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
-                            <p>👆 Нажмите или перетащите файлы сюда</p>
-                            <p style="color: #666; font-size: 14px; margin-top: 10px;">Поддерживаются: PNG, JPG, GIF, MP4</p>
+        function render() {
+            const container = document.getElementById('screenshots-data');
+            
+            let filesHtml = '';
+            if (selectedFiles.length === 0) {
+                filesHtml = '<p>Файлы не выбраны</p>';
+            } else {
+                filesHtml = '<div class="file-list">';
+                selectedFiles.forEach((file, index) => {
+                    const size = (file.size / 1024).toFixed(2) + ' KB';
+                    filesHtml += `
+                        <div class="file-item">
+                            <span class="file-name">${file.name}</span>
+                            <span class="file-size">${size}</span>
+                            <span class="remove-file" onclick="removeFile(${index})">✕</span>
                         </div>
-                        <input type="file" id="fileInput" multiple style="display: none;" accept="image/*,video/*">
-                        
-                        ${filesHtml}
-                    </div>
-
-                    <!-- Режим распределения -->
-                    <div class="card">
-                        <h3>Режим распределения</h3>
-                        <p>Выберите как распределить файлы между ботами</p>
-                        
-                        <div class="radio-group">
-                            <div class="radio-option ${distributionMode === 'fair' ? 'selected' : ''}" onclick="setMode('fair')">
-                                <input type="radio" name="mode" ${distributionMode === 'fair' ? 'checked' : ''}> 
-                                <strong>Поступить честно</strong> (кол-во файлов = кол-во ботов)
-                            </div>
-                            <div class="radio-option ${distributionMode === 'all' ? 'selected' : ''}" onclick="setMode('all')">
-                                <input type="radio" name="mode" ${distributionMode === 'all' ? 'checked' : ''}> 
-                                <strong>Поступить как пидарас</strong> (1 файл для всех)
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Ошибка распределения (будет показываться при необходимости) -->
-                    <div class="error-message" id="errorMessage">
-                        Ошибка распределения: недостаточно ботов или файлов
-                    </div>
-
-                    <!-- Кнопка отправки -->
-                    <button class="btn" onclick="sendFiles()" style="margin-top: 10px;">
-                        Отправить ${selectedFiles.length} файлов
-                    </button>
-                `;
-
-                // Настраиваем drag & drop
-                setupDragAndDrop();
+                    `;
+                });
+                filesHtml += '</div>';
             }
 
-            // Настройка drag & drop
-            function setupDragAndDrop() {
-                const dropzone = document.getElementById('dropzone');
-                const fileInput = document.getElementById('fileInput');
+            container.innerHTML = `
+                <h1 class="page-title">Telegram публикация файлов</h1>
+                <div class="page-subtitle">Публикуйте файлы через ваших Telegram ботов</div>
+                <hr>
 
-                if (!dropzone) return;
+                <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    ⚠️ <strong>Подписка истекла</strong><br>
+                    Оформите подписку для доступа к сервисам<br>
+                    <a href="/subscribe" style="color: #007bff;">Оформить подписку →</a>
+                </div>
 
-                dropzone.addEventListener('dragover', (e) => {
-                    e.preventDefault();
-                    dropzone.classList.add('dragover');
-                });
+                <div class="card">
+                    <h3>Выберите файлы</h3>
+                    <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+                        <p>👆 Нажмите или перетащите файлы сюда</p>
+                        <p style="color: #666; font-size: 14px; margin-top: 10px;">Поддерживаются: PNG, JPG, GIF, MP4</p>
+                    </div>
+                    <input type="file" id="fileInput" multiple style="display: none;" accept="image/*,video/*">
+                    ${filesHtml}
+                </div>
 
-                dropzone.addEventListener('dragleave', () => {
-                    dropzone.classList.remove('dragover');
-                });
-
-                dropzone.addEventListener('drop', (e) => {
-                    e.preventDefault();
-                    dropzone.classList.remove('dragover');
+                <div class="card">
+                    <h3>Режим распределения</h3>
+                    <p>Выберите как распределить файлы между ботами</p>
                     
-                    const files = Array.from(e.dataTransfer.files);
+                    <div class="radio-group">
+                        <div class="radio-option ${distributionMode === 'fair' ? 'selected' : ''}" onclick="setMode('fair')">
+                            <input type="radio" name="mode" ${distributionMode === 'fair' ? 'checked' : ''}> 
+                            <strong>Поступить честно</strong> (кол-во файлов = кол-во ботов)
+                        </div>
+                        <div class="radio-option ${distributionMode === 'all' ? 'selected' : ''}" onclick="setMode('all')">
+                            <input type="radio" name="mode" ${distributionMode === 'all' ? 'checked' : ''}> 
+                            <strong>Поступить как пидарас</strong> (1 файл для всех)
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn" onclick="sendFiles()" style="margin-top: 10px;">
+                    Отправить ${selectedFiles.length} файлов
+                </button>
+            `;
+
+            setupDragAndDrop();
+            setupFileInput();
+        }
+
+        function setupDragAndDrop() {
+            const dropzone = document.getElementById('dropzone');
+            if (!dropzone) return;
+
+            dropzone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropzone.classList.add('dragover');
+            });
+
+            dropzone.addEventListener('dragleave', () => {
+                dropzone.classList.remove('dragover');
+            });
+
+            dropzone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropzone.classList.remove('dragover');
+                const files = Array.from(e.dataTransfer.files);
+                selectedFiles = [...selectedFiles, ...files];
+                render();
+            });
+        }
+
+        function setupFileInput() {
+            const fileInput = document.getElementById('fileInput');
+            if (fileInput) {
+                fileInput.addEventListener('change', (e) => {
+                    const files = Array.from(e.target.files);
                     selectedFiles = [...selectedFiles, ...files];
                     render();
                 });
-
-                if (fileInput) {
-                    fileInput.addEventListener('change', (e) => {
-                        const files = Array.from(e.target.files);
-                        selectedFiles = [...selectedFiles, ...files];
-                        render();
-                    });
-                }
             }
+        }
 
-            // Удаление файла
-            window.removeFile = (index) => {
-                selectedFiles.splice(index, 1);
-                render();
-            };
-
-            // Установка режима
-            window.setMode = (mode) => {
-                distributionMode = mode;
-                render();
-            };
-
-            // Отправка файлов (пока заглушка)
-            window.sendFiles = () => {
-                if (selectedFiles.length === 0) {
-                    alert('Выберите файлы');
-                    return;
-                }
-
-                // TODO: заменить на реальную отправку на бэкенд
-                alert(`Отправка ${selectedFiles.length} файлов в режиме: ${distributionMode === 'fair' ? 'честном' : 'пидарас'}`);
-                
-                // Очищаем после отправки (для теста)
-                selectedFiles = [];
-                render();
-            };
-
-            // Начинаем рендер
+        window.removeFile = (index) => {
+            selectedFiles.splice(index, 1);
             render();
-        })();
+        };
+
+        window.setMode = (mode) => {
+            distributionMode = mode;
+            render();
+        };
+
+        window.sendFiles = () => {
+            if (selectedFiles.length === 0) {
+                alert('Выберите файлы');
+                return;
+            }
+            alert(`Отправка ${selectedFiles.length} файлов в режиме: ${distributionMode === 'fair' ? 'честном' : 'пидарас'}`);
+            selectedFiles = [];
+            render();
+        };
     </script>
 </body>
 </html>

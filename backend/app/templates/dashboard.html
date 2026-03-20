@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Главная | VK Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        .stat-number {
+            font-size: 36px;
+            font-weight: bold;
+            color: #007bff;
+            margin: 10px 0;
+        }
+        .stat-label {
+            color: #666;
+            font-size: 14px;
+        }
+        .welcome-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+        }
+        .quick-actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .quick-btn {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            text-decoration: none;
+            color: #333;
+            transition: transform 0.2s, box-shadow 0.2s;
+            border: 1px solid #e0e0e0;
+            display: block;
+        }
+        .quick-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            border-color: #007bff;
+        }
+        .quick-btn .emoji {
+            font-size: 28px;
+            display: block;
+            margin-bottom: 8px;
+        }
+        .subscription-warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .subscription-active {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+        }
+        .sidebar ul li a {
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <!-- Боковое меню со ВСЕМИ ссылками (включая будущие страницы) -->
+            <div class="sidebar">
+                <h3>VK Manager</h3>
+                <ul>
+                    <li class="active"><a href="/">Главная</a></li>
+                    <li><a href="/profile">Редактировать профиль</a></li>
+                    <li><a href="/screenshots">Отправить скрины в тг</a></li>
+                    <li><a href="/tokens">Управление VK токенами</a></li>
+                    <li><a href="/posts">Создать посты</a></li>
+                    <li><a href="/reposts_wall">Создать репосты (на стену)</a></li>
+                    <li><a href="/reposts_dm">Создать репосты (в лс)</a></li>
+                    <li><a href="/comments">Создать комментарии</a></li>
+                    <li><a href="/likes">Поставить лайки</a></li>
+                    <li><a href="/subscribe_group">Подписаться на группу</a></li>
+                    <li><a href="/statistics">Статистика</a></li>
+                </ul>
+            </div>
+
+            <!-- Основной контент -->
+            <div class="content" id="dashboard-content">
+                <div id="dashboard-data">Загрузка...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+    <script>
+        (async function() {
+            const token = getToken();
+            if (!token) {
+                window.location.href = '/login';
+                return;
+            }
+
+            try {
+                const res = await fetchWithAuth('/auth/me');
+                const user = await res.json();
+
+                // Здесь позже будет реальная статистика из БД
+                const stats = {
+                    total_bots: 0,
+                    total_posts: 0,
+                    total_reposts: 0,
+                    total_likes: 0,
+                    subscription_active: false,
+                    subscription_expires: null
+                };
+
+                const isSubActive = stats.subscription_active;
+
+                document.getElementById('dashboard-data').innerHTML = `
+                    <div class="welcome-section">
+                        <h1>Привет, ${user.username}!</h1>
+                        <p>${isSubActive ? 'Добро пожаловать!' : 'Подписка истекла. Оформите новую.'}</p>
+                    </div>
+
+                    ${!isSubActive ? `
+                    <div class="subscription-warning">
+                        ⚠️ <strong>Подписка истекла</strong><br>
+                        Оформите подписку для доступа ко всем сервисам<br>
+                        <a href="/subscribe" style="color: #007bff;">Оформить подписку →</a>
+                    </div>
+                    ` : `
+                    <div class="subscription-warning subscription-active">
+                        ✅ <strong>Подписка активна</strong><br>
+                        Все сервисы доступны
+                    </div>
+                    `}
+
+                    <!-- Статистика -->
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-number">${stats.total_bots}</div>
+                            <div class="stat-label">VK ботов</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number">${stats.total_posts}</div>
+                            <div class="stat-label">Создано постов</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number">${stats.total_reposts}</div>
+                            <div class="stat-label">Сделано репостов</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number">${stats.total_likes}</div>
+                            <div class="stat-label">Поставлено лайков</div>
+                        </div>
+                    </div>
+
+                    <!-- Быстрые действия (ссылки на уже готовые страницы) -->
+                    <h3 style="margin: 30px 0 15px 0;">Быстрые действия</h3>
+                    <div class="quick-actions">
+                        <a href="/profile" class="quick-btn">
+                            <span class="emoji">👤</span>
+                            Редактировать профиль
+                        </a>
+                        <a href="/tokens" class="quick-btn">
+                            <span class="emoji">🤖</span>
+                            Управление токенами
+                        </a>
+                        <a href="/posts" class="quick-btn">
+                            <span class="emoji">📝</span>
+                            Создать пост
+                        </a>
+                        <a href="/screenshots" class="quick-btn">
+                            <span class="emoji">📸</span>
+                            Отправить скрины
+                        </a>
+                        <a href="/likes" class="quick-btn">
+                            <span class="emoji">❤️</span>
+                            Поставить лайки
+                        </a>
+                        <a href="/statistics" class="quick-btn">
+                            <span class="emoji">📊</span>
+                            Статистика
+                        </a>
+                    </div>
+
+                    <!-- Последние активности (заглушка, потом будет из БД) -->
+                    <div class="card" style="margin-top: 30px;">
+                        <h3>Последние активности</h3>
+                        <p style="color: #888; text-align: center; padding: 30px;">Нет активностей за последние 7 дней</p>
+                    </div>
+                `;
+            } catch (e) {
+                console.error('Ошибка загрузки', e);
+                window.location.href = '/login';
+            }
+        })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Профиль | VK Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .profile-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .subscription-badge {
+            background: #dc3545;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+        .subscription-badge.active {
+            background: #28a745;
+        }
+        .settings-row {
+            margin-bottom: 15px;
+        }
+        .settings-row label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+        .action-buttons {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .action-btn {
+            background: #f0f0f0;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .action-btn:hover {
+            background: #e0e0e0;
+        }
+        .action-btn.danger {
+            color: #dc3545;
+        }
+        .sidebar ul li a {
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <!-- Боковое меню -->
+            <div class="sidebar">
+                <h3>VK Manager</h3>
+                <ul>
+                    <li><a href="/">Главная</a></li>
+                    <li class="active"><a href="/profile">Редактировать профиль</a></li>
+                    <li><a href="/screenshots">Отправить скрины в тг</a></li>
+                    <li><a href="/tokens">Управление VK токенами</a></li>
+                    <li><a href="/posts">Создать посты</a></li>
+                    <li><a href="/reposts_wall">Создать репосты (на стену)</a></li>
+                    <li><a href="/reposts_dm">Создать репосты (в лс)</a></li>
+                    <li><a href="/comments">Создать комментарии</a></li>
+                    <li><a href="/likes">Поставить лайки</a></li>
+                    <li><a href="/subscribe_group">Подписаться на группу</a></li>
+                    <li><a href="/statistics">Статистика</a></li>
+                </ul>
+            </div>
+
+            <!-- Контент -->
+            <div class="content" id="profile-content">
+                <div id="profile-data">Загрузка...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+    <script>
+        (async function() {
+            const token = getToken();
+            if (!token) {
+                window.location.href = '/login';
+                return;
+            }
+
+            try {
+                const res = await fetchWithAuth('/auth/me');
+                const user = await res.json();
+                
+                const subscriptionActive = false;
+                const registeredDate = user.registered_at ? new Date(user.registered_at).toLocaleDateString('ru-RU') : '13.11.2025';
+
+                document.getElementById('profile-content').innerHTML = `
+                    <div class="profile-header">
+                        <h1 class="page-title">Профиль пользователя</h1>
+                        <div class="subscription-badge ${subscriptionActive ? 'active' : ''}">
+                            ${subscriptionActive ? 'Подписка активна' : 'Подписка истекла'}
+                        </div>
+                    </div>
+                    <div class="page-subtitle">Управление вашими данными и настройками</div>
+                    <hr>
+
+                    ${!subscriptionActive ? `
+                    <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                        ⚠️ <strong>Подписка истекла</strong><br>
+                        Оформите подписку для доступа к сервисам<br>
+                        <a href="/subscribe" style="color: #007bff;">Оформить подписку →</a>
+                    </div>
+                    ` : ''}
+
+                    <div class="card">
+                        <h3>Информация о пользователе</h3>
+                        <div class="info-row">
+                            <span class="info-label">Имя:</span>
+                            <span class="info-value">${user.username}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Email:</span>
+                            <span class="info-value">${user.email}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Роль:</span>
+                            <span class="info-value">${user.role}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Зарегистрирован:</span>
+                            <span class="info-value">${registeredDate}</span>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>Настройки лайков</h3>
+                        <div class="settings-row">
+                            <label>Количество лайков на пост:</label>
+                            <input type="number" class="input-field" id="likes_per_post" value="${user.likes_per_post || 0}" style="width: 100px;">
+                        </div>
+                        <div class="settings-row">
+                            <label>Telegram Chat ID для уведомлений:</label>
+                            <input type="text" class="input-field" id="telegram_chat" placeholder="Введите ваш Chat ID" value="${user.telegram_chat_id || ''}">
+                            <div class="help-text">Оставьте пустым, чтобы отключить уведомления в Telegram</div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>Доступные аккаунты</h3>
+                        <div class="info-row">
+                            <span class="info-label">Всего доступно VK аккаунтов:</span>
+                            <span class="info-value" id="bots-count">0</span>
+                        </div>
+                        <div class="help-text">Добавьте ботов в разделе "Управление VK токенами"</div>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button class="btn" id="save-btn">Сохранить все</button>
+                        <button class="action-btn" id="change-password-btn">Сменить пароль</button>
+                        <button class="action-btn" id="manage-tokens-btn">Управление VK токенами</button>
+                        <button class="action-btn danger" id="logout-btn">Выйти из системы</button>
+                    </div>
+
+                    <div class="info-block">
+                        <h4>Как это работает:</h4>
+                        <p>При создании поста/репоста автоматически ставится указанное количество лайков.</p>
+                        <p>Лайки распределяются между всеми доступными VK аккаунтами.</p>
+                        <p>Каждый аккаунт ставит по 1 лайку на пост.</p>
+                        <p>Если аккаунтов меньше чем запрошенное количество лайков, то он будет удален из списка.</p>
+                        <p>Для получения Chat ID выберите в Telegram бота @userinfobot</p>
+                    </div>
+                `;
+
+                document.getElementById('save-btn')?.addEventListener('click', async () => {
+                    const likes_per_post = document.getElementById('likes_per_post').value;
+                    const telegram_chat_id = document.getElementById('telegram_chat').value;
+                    
+                    const response = await fetchWithAuth('/users/update', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ likes_per_post, telegram_chat_id })
+                    });
+                    
+                    alert(response.ok ? '✅ Настройки сохранены!' : '❌ Ошибка сохранения');
+                });
+
+                document.getElementById('logout-btn')?.addEventListener('click', () => {
+                    localStorage.removeItem('vk_manager_token');
+                    window.location.href = '/login';
+                });
+
+                document.getElementById('manage-tokens-btn')?.addEventListener('click', () => {
+                    window.location.href = '/tokens';
+                });
+
+                document.getElementById('change-password-btn')?.addEventListener('click', () => {
+                    alert('Функция смены пароля будет добавлена позже');
+                });
+
+            } catch (e) {
+                document.getElementById('profile-content').innerHTML = '❌ Ошибка загрузки профиля';
+                console.error(e);
+            }
+        })();
+    </script>
+</body>
+</html>
