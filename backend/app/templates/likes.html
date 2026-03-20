@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Поставить лайки | VK Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .link-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background: white;
+            position: relative;
+        }
+        .link-number {
+            position: absolute;
+            top: -12px;
+            left: 20px;
+            background: #e83e8c;
+            color: white;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+        .link-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        .link-preview {
+            background: #f8f9fa;
+            padding: 8px 12px;
+            border-radius: 8px;
+            margin-top: 8px;
+            font-size: 13px;
+            color: #666;
+        }
+        .likes-config {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .likes-slider {
+            width: 100%;
+            margin: 15px 0;
+        }
+        .likes-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #e83e8c;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .stat-card {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #e83e8c;
+        }
+        .supported-formats {
+            background: #e7f3ff;
+            border-radius: 12px;
+            padding: 15px 20px;
+            margin: 20px 0;
+            font-size: 13px;
+        }
+        .supported-formats code {
+            background: #fff;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .sidebar ul li a {
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <div class="sidebar">
+                <h3>VK Manager</h3>
+                <ul>
+                    <li><a href="/dashboard">Главная</a></li>
+                    <li><a href="/profile">Редактировать профиль</a></li>
+                    <li><a href="/screenshots">Отправить скрины в тг</a></li>
+                    <li><a href="/tokens">Управление VK токенами</a></li>
+                    <li><a href="/posts">Создать посты</a></li>
+                    <li><a href="/reposts_wall">Создать репосты (на стену)</a></li>
+                    <li><a href="/reposts_dm">Создать репосты (в лс)</a></li>
+                    <li><a href="/comments">Создать комментарии</a></li>
+                    <li class="active"><a href="/likes">Поставить лайки</a></li>
+                    <li><a href="/subscribe_group">Подписаться на группу</a></li>
+                    <li><a href="/statistics">Статистика</a></li>
+                </ul>
+            </div>
+
+            <div class="content">
+                <div id="likes-content">
+                    <div class="loading-spinner">⏳ Загрузка...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+    <script>
+        let postLinks = [];
+        let bots = [];
+        let likesPerPost = 1;
+        let loading = false;
+
+        (async function() {
+            const token = getToken();
+            if (!token) {
+                window.location.href = '/login';
+                return;
+            }
+
+            await loadData();
+            render();
+        })();
+
+        async function loadData() {
+            loading = true;
+            render();
+            
+            try {
+                const botsResponse = await fetchWithAuth('/api/bots');
+                if (botsResponse.ok) {
+                    bots = await botsResponse.json();
+                }
+                
+                const savedLinks = localStorage.getItem('vk_manager_likes_links');
+                if (savedLinks) {
+                    postLinks = JSON.parse(savedLinks);
+                } else {
+                    postLinks = [{ link: '', id: Date.now() }];
+                }
+                
+                const savedLikes = localStorage.getItem('vk_manager_likes_per_post');
+                if (savedLikes) {
+                    likesPerPost = parseInt(savedLikes);
+                }
+            } catch (e) {
+                console.error('Ошибка загрузки', e);
+            } finally {
+                loading = false;
+                render();
+            }
+        }
+
+        function saveLinksToStorage() {
+            localStorage.setItem('vk_manager_likes_links', JSON.stringify(postLinks));
+        }
+
+        function saveLikesToStorage() {
+            localStorage.setItem('vk_manager_likes_per_post', likesPerPost);
+        }
+
+        function addLink() {
+            postLinks.push({ link: '', id: Date.now() });
+            saveLinksToStorage();
+            render();
+        }
+
+        function deleteLink(index) {
+            if (postLinks.length === 1) {
+                postLinks[0] = { link: '', id: Date.now() };
+                saveLinksToStorage();
+                render();
+                return;
+            }
+            postLinks.splice(index, 1);
+            saveLinksToStorage();
+            render();
+        }
+
+        function updateLink(index, value) {
+            postLinks[index].link = value;
+            saveLinksToStorage();
+            render();
+        }
+
+        function updateLikesPerPost(value) {
+            likesPerPost = Math.min(100, Math.max(1, parseInt(value) || 1));
+            saveLikesToStorage();
+            render();
+        }
+
+        function validateLink(link) {
+            const patterns = [
+                /https?:\/\/(vk\.com|m\.vk\.com)\/wall[-\d]+_\d+/,  // посты
+                /https?:\/\/(vk\.com|m\.vk\.com)\/photo[-\d]+_\d+/, // фото
+                /https?:\/\/(vk\.com|m\.vk\.com)\/video[-\d]+_\d+/, // видео
+                /https?:\/\/(vk\.com|m\.vk\.com)\/wall[-\d]+_\d+\?reply=\d+/, // комментарии
+                /https?:\/\/(vk\.com|m\.vk\.com)\/clip[-\d]+_\d+/, // клипы
+                /https?:\/\/(vk\.com|m\.vk\.com)\/video_ext\.php\?oid=-\d+&id=\d+/ // расширенные видео
+            ];
+            return patterns.some(pattern => pattern.test(link));
+        }
+
+        function getLinkType(link) {
+            if (/wall[-\d]+_\d+\?reply=\d+/.test(link)) return 'комментарий';
+            if (/photo/.test(link)) return 'фото';
+            if (/video/.test(link) || /clip/.test(link)) return 'видео';
+            if (/wall/.test(link)) return 'пост';
+            return 'неизвестно';
+        }
+
+        async function publishLikes() {
+            const validLinks = postLinks.filter(l => validateLink(l.link));
+            
+            if (validLinks.length === 0) {
+                alert('Нет валидных ссылок');
+                return;
+            }
+            
+            const activeBots = bots.filter(b => b.status === 'active');
+            if (activeBots.length === 0) {
+                alert('Нет активных ботов. Добавьте VK токены');
+                return;
+            }
+            
+            const maxPossibleLikes = activeBots.length;
+            const actualLikesPerPost = Math.min(likesPerPost, maxPossibleLikes);
+            
+            let totalLikes = validLinks.length * actualLikesPerPost;
+            
+            let message = `Поставить лайки на ${validLinks.length} ссылок:\n\n`;
+            message += `❤️ Запрошено лайков на пост: ${likesPerPost}\n`;
+            message += `🤖 Доступно ботов: ${activeBots.length}\n`;
+            
+            if (likesPerPost > maxPossibleLikes) {
+                message += `⚠️ Будет поставлено только ${actualLikesPerPost} лайков на пост (не хватает ботов)\n`;
+            }
+            
+            message += `\n📊 Всего операций: ${totalLikes} лайков`;
+            
+            if (!confirm(message + '\n\nПродолжить?')) return;
+            
+            alert(`Постановка лайков...\n(Функция будет реализована позже)`);
+        }
+
+        function render() {
+            const container = document.getElementById('likes-content');
+            const activeBots = bots.filter(b => b.status === 'active');
+            const validLinks = postLinks.filter(l => validateLink(l.link));
+            const maxPossibleLikes = activeBots.length;
+            const actualLikesPerPost = Math.min(likesPerPost, maxPossibleLikes);
+            const totalLikes = validLinks.length * actualLikesPerPost;
+            
+            if (loading) {
+                container.innerHTML = `<div class="loading-spinner">⏳ Загрузка...</div>`;
+                return;
+            }
+            
+            container.innerHTML = `
+                <h1 class="page-title">Массовые лайки</h1>
+                <div class="page-subtitle">Ставьте лайки на множество постов VK через всех доступных ботов</div>
+                <hr>
+
+                <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    ⚠️ <strong>Подписка истекла</strong><br>
+                    Оформите подписку для доступа к сервисам<br>
+                    <a href="/subscribe" style="color: #007bff;">Оформить подписку →</a>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value">${validLinks.length}</div>
+                        <div>Валидных ссылок</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${activeBots.length}</div>
+                        <div>Активных ботов</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${actualLikesPerPost}</div>
+                        <div>Лайков на пост</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${totalLikes}</div>
+                        <div>Всего лайков</div>
+                    </div>
+                </div>
+
+                <!-- Ссылки на посты -->
+                <div class="card">
+                    <h3>🔗 Ссылки на посты VK</h3>
+                    <p style="font-size: 14px; color: #666; margin-bottom: 15px;">Каждая ссылка с новой строки или через запятую</p>
+                    
+                    <div id="links_list">
+                        ${postLinks.map((item, index) => {
+                            const isValid = validateLink(item.link);
+                            const linkType = isValid ? getLinkType(item.link) : '';
+                            return `
+                                <div style="margin-bottom: 15px;">
+                                    <div style="display: flex; gap: 10px; align-items: flex-start;">
+                                        <input type="text" class="link-input" data-index="${index}" value="${escapeHtml(item.link)}" placeholder="https://vk.com/wall-123456_789" style="flex: 1;">
+                                        <button class="btn-icon btn-delete" onclick="deleteLink(${index})" style="background: none; border: none; color: #dc3545; cursor: pointer; font-size: 20px;">🗑️</button>
+                                    </div>
+                                    <div class="link-preview">
+                                        ${item.link ? (isValid ? `✅ ${linkType} — формат верный` : '❌ Неверный формат ссылки') : 'Введите ссылку на пост VK'}
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                    
+                    <button class="btn" id="add_link_btn" style="background: #28a745; margin-top: 10px;">➕ Добавить ссылку</button>
+                </div>
+
+                <!-- Настройка количества лайков -->
+                <div class="likes-config">
+                    <h3>❤️ Количество лайков на каждый пост</h3>
+                    <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+                        <input type="range" id="likes_slider" class="likes-slider" min="1" max="${Math.max(1, activeBots.length)}" value="${likesPerPost}" style="flex: 1;">
+                        <div class="likes-value" id="likes_value">${likesPerPost}</div>
+                    </div>
+                    <div class="help-text">Максимум: ${activeBots.length} (по количеству доступных ботов)</div>
+                    ${likesPerPost > maxPossibleLikes ? `<div style="color: #856404; margin-top: 10px;">⚠️ Будет поставлено только ${actualLikesPerPost} лайков (не хватает ботов)</div>` : ''}
+                </div>
+
+                <button class="btn" id="publish_btn" style="background: #007bff; width: 100%; margin-top: 20px;">
+                    ❤️ Поставить лайки (${validLinks.length} ссылок × ${actualLikesPerPost} лайков = ${totalLikes} операций)
+                </button>
+
+                <div class="supported-formats">
+                    <h4>📌 Поддерживаемые форматы VK:</h4>
+                    <p><strong>Посты:</strong> <code>vk.com/wall-123456_789</code> <code>vk.com/club123?z=wall-123_456</code></p>
+                    <p><strong>Фото:</strong> <code>vk.com/photo-123456_789</code></p>
+                    <p><strong>Видео/Клипы:</strong> <code>vk.com/video-123456_789</code> <code>vk.com/club123?z=clip-123_456</code></p>
+                    <p><strong>Комментарии:</strong> <code>vk.com/wall-123_456?reply=789</code></p>
+                    <p><strong>Расширенные видео:</strong> <code>vk.com/video_ext.php?oid=-123&id=456</code></p>
+                </div>
+
+                <div class="info-block" style="margin-top: 20px;">
+                    <h4>📌 Как это работает:</h4>
+                    <p>• Каждая ссылка получит указанное количество лайков</p>
+                    <p>• Лайки распределяются между доступными ботами</p>
+                    <p>• Каждый бот ставит по 1 лайку на каждый пост</p>
+                    <p>• Автоматически ограничено количеством доступных ботов</p>
+                </div>
+            `;
+            
+            document.querySelectorAll('.link-input').forEach(input => {
+                const index = parseInt(input.dataset.index);
+                input.addEventListener('input', (e) => {
+                    updateLink(index, e.target.value);
+                });
+            });
+            
+            const slider = document.getElementById('likes_slider');
+            const likesValue = document.getElementById('likes_value');
+            
+            if (slider) {
+                slider.addEventListener('input', (e) => {
+                    likesValue.textContent = e.target.value;
+                    updateLikesPerPost(e.target.value);
+                });
+            }
+            
+            document.getElementById('add_link_btn')?.addEventListener('click', addLink);
+            document.getElementById('publish_btn')?.addEventListener('click', publishLikes);
+        }
+        
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+        
+        window.deleteLink = deleteLink;
+        window.updateLink = updateLink;
+    </script>
+</body>
+</html>

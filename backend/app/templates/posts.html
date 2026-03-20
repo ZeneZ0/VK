@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Создание постов | VK Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .editor-toolbar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        .editor-toolbar button {
+            background: #f0f0f0;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        .editor-toolbar button:hover {
+            background: #e0e0e0;
+        }
+        .post-textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 14px;
+            resize: vertical;
+        }
+        .post-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background: white;
+            position: relative;
+        }
+        .post-number {
+            position: absolute;
+            top: -12px;
+            left: 20px;
+            background: #007bff;
+            color: white;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+        .post-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            justify-content: flex-end;
+        }
+        .btn-outline-danger {
+            background: transparent;
+            border: 1px solid #dc3545;
+            color: #dc3545;
+        }
+        .btn-outline-danger:hover {
+            background: #dc3545;
+            color: white;
+        }
+        .import-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 25px;
+        }
+        .import-textarea {
+            width: 100%;
+            min-height: 100px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        .posts-stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .stat-badge {
+            background: #e9ecef;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+        .sidebar ul li a {
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <div class="sidebar">
+                <h3>VK Manager</h3>
+                <ul>
+                    <li><a href="/dashboard">Главная</a></li>
+                    <li><a href="/profile">Редактировать профиль</a></li>
+                    <li><a href="/screenshots">Отправить скрины в тг</a></li>
+                    <li><a href="/tokens">Управление VK токенами</a></li>
+                    <li class="active"><a href="/posts">Создать посты</a></li>
+                    <li><a href="/reposts_wall">Создать репосты (на стену)</a></li>
+                    <li><a href="/reposts_dm">Создать репосты (в лс)</a></li>
+                    <li><a href="/comments">Создать комментарии</a></li>
+                    <li><a href="/likes">Поставить лайки</a></li>
+                    <li><a href="/subscribe_group">Подписаться на группу</a></li>
+                    <li><a href="/statistics">Статистика</a></li>
+                </ul>
+            </div>
+
+            <div class="content">
+                <div id="posts-content">
+                    <div class="loading-spinner">⏳ Загрузка...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+    <script>
+        let posts = [];
+        let bots = [];
+        let loading = false;
+
+        (async function() {
+            const token = getToken();
+            if (!token) {
+                window.location.href = '/login';
+                return;
+            }
+
+            await loadData();
+            render();
+        })();
+
+        async function loadData() {
+            loading = true;
+            render();
+            
+            try {
+                // Загружаем ботов для публикации
+                const botsResponse = await fetchWithAuth('/api/bots');
+                if (botsResponse.ok) {
+                    bots = await botsResponse.json();
+                }
+                
+                // Загружаем сохранённые посты (если есть)
+                const savedPosts = localStorage.getItem('vk_manager_posts');
+                if (savedPosts) {
+                    posts = JSON.parse(savedPosts);
+                } else {
+                    posts = [{ text: '', id: Date.now() }];
+                }
+            } catch (e) {
+                console.error('Ошибка загрузки', e);
+            } finally {
+                loading = false;
+                render();
+            }
+        }
+
+        function savePostsToStorage() {
+            localStorage.setItem('vk_manager_posts', JSON.stringify(posts));
+        }
+
+        function addPost() {
+            posts.push({ text: '', id: Date.now() });
+            savePostsToStorage();
+            render();
+        }
+
+        function deletePost(index) {
+            if (posts.length === 1) {
+                posts[0].text = '';
+                savePostsToStorage();
+                render();
+                return;
+            }
+            posts.splice(index, 1);
+            savePostsToStorage();
+            render();
+        }
+
+        function updatePostText(index, text) {
+            posts[index].text = text;
+            savePostsToStorage();
+            render();
+        }
+
+        function importPosts() {
+            const importText = document.getElementById('import_text').value.trim();
+            if (!importText) return;
+            
+            try {
+                // Парсим формат ["пост1"]["пост2"]
+                const matches = importText.match(/\["(.*?)\"(?:\]|$)/gs);
+                if (matches) {
+                    const newPosts = matches.map(match => {
+                        let text = match.slice(2, -1);
+                        text = text.replace(/\\"/g, '"');
+                        text = text.replace(/\\n/g, '\n');
+                        return { text: text, id: Date.now() + Math.random() };
+                    });
+                    
+                    if (newPosts.length > 0) {
+                        posts = newPosts;
+                        savePostsToStorage();
+                        render();
+                        document.getElementById('import_text').value = '';
+                        alert(`Импортировано ${newPosts.length} постов`);
+                    }
+                } else {
+                    alert('Неверный формат. Используйте: ["пост1"]["пост2"]');
+                }
+            } catch (e) {
+                alert('Ошибка парсинга. Проверьте формат');
+                console.error(e);
+            }
+        }
+
+        function clearAllPosts() {
+            if (confirm('Очистить все посты?')) {
+                posts = [{ text: '', id: Date.now() }];
+                savePostsToStorage();
+                render();
+            }
+        }
+
+        async function publishPosts() {
+            const validPosts = posts.filter(p => p.text.trim().length > 0);
+            
+            if (validPosts.length === 0) {
+                alert('Нет постов для публикации');
+                return;
+            }
+            
+            const activeBots = bots.filter(b => b.status === 'active');
+            if (activeBots.length === 0) {
+                alert('Нет активных ботов. Добавьте VK токены в разделе "Управление VK токенами"');
+                return;
+            }
+            
+            const totalOperations = validPosts.length * activeBots.length;
+            if (!confirm(`Опубликовать ${validPosts.length} постов через ${activeBots.length} ботов? (Всего операций: ${totalOperations})`)) {
+                return;
+            }
+            
+            // TODO: заменить на реальную отправку
+            alert(`Отправка ${validPosts.length} постов через ${activeBots.length} ботов...\n(Функция будет реализована позже)`);
+        }
+
+        function render() {
+            const container = document.getElementById('posts-content');
+            const activeBotsCount = bots.filter(b => b.status === 'active').length;
+            const validPostsCount = posts.filter(p => p.text.trim().length > 0).length;
+            
+            if (loading) {
+                container.innerHTML = `<div class="loading-spinner">⏳ Загрузка...</div>`;
+                return;
+            }
+            
+            container.innerHTML = `
+                <h1 class="page-title">Создание постов</h1>
+                <div class="page-subtitle">Создавайте и публикуйте посты через ваших ботов VK</div>
+                <hr>
+
+                <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    ⚠️ <strong>Подписка истекла</strong><br>
+                    Оформите подписку для доступа к сервисам<br>
+                    <a href="/subscribe" style="color: #007bff;">Оформить подписку →</a>
+                </div>
+
+                <div class="posts-stats">
+                    <div class="stat-badge">📝 Постов: ${posts.length}</div>
+                    <div class="stat-badge">✅ Валидных: ${validPostsCount}</div>
+                    <div class="stat-badge">🤖 Активных ботов: ${activeBotsCount}</div>
+                </div>
+
+                <div class="import-section">
+                    <h3 style="margin-bottom: 10px;">📥 Массовый импорт</h3>
+                    <p style="font-size: 14px; color: #666; margin-bottom: 10px;">Формат: <code>["Первый пост"]["Второй пост с \"кавычками\"]["Третий пост\\nс переносом"]</code></p>
+                    <textarea id="import_text" class="import-textarea" placeholder='["Пример поста"]["Ещё один пост"]'></textarea>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <button class="btn" id="import_btn" style="background: #28a745;">📥 Импортировать</button>
+                        <button class="btn" id="example_btn" style="background: #6c757d;">📋 Пример</button>
+                        <button class="btn btn-outline-danger" id="clear_all_btn">🗑️ Очистить все</button>
+                    </div>
+                </div>
+
+                <div id="posts_list">
+                    ${posts.map((post, index) => `
+                        <div class="post-card">
+                            <div class="post-number">Пост #${index + 1}</div>
+                            <div style="margin-bottom: 10px;">
+                                <label style="font-weight: 500; margin-bottom: 5px; display: block;">Текст поста:</label>
+                                <textarea class="post-textarea" data-index="${index}" placeholder="Введите текст поста...">${escapeHtml(post.text)}</textarea>
+                            </div>
+                            <div style="font-size: 12px; color: #888;">
+                                Символов: ${post.text.length} | Слов: ${post.text.split(/\s+/).filter(w => w.length > 0).length}
+                            </div>
+                            <div class="post-actions">
+                                <button class="btn-icon btn-delete" onclick="deletePost(${index})" style="background: none; border: none; color: #dc3545; cursor: pointer;">🗑️ Удалить</button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <div style="display: flex; gap: 15px; margin-top: 20px; flex-wrap: wrap;">
+                    <button class="btn" id="add_post_btn" style="background: #28a745;">➕ Добавить пост</button>
+                    <button class="btn" id="publish_btn" style="background: #007bff;">🚀 Опубликовать (${validPostsCount} постов, ${activeBotsCount} ботов)</button>
+                </div>
+
+                <div class="info-block" style="margin-top: 30px;">
+                    <h4>📌 Примечания:</h4>
+                    <p>• Каждый пост будет опубликован от имени каждого активного бота</p>
+                    <p>• Общее количество операций: посты × боты</p>
+                    <p>• Поддерживаются переносы строк и специальные символы</p>
+                    <p>• Для экранирования кавычек используйте обратную косую черту: <code>\\"</code></p>
+                </div>
+            `;
+            
+            // Добавляем обработчики
+            document.querySelectorAll('.post-textarea').forEach(textarea => {
+                const index = parseInt(textarea.dataset.index);
+                textarea.addEventListener('input', (e) => {
+                    updatePostText(index, e.target.value);
+                });
+            });
+            
+            document.getElementById('add_post_btn')?.addEventListener('click', addPost);
+            document.getElementById('publish_btn')?.addEventListener('click', publishPosts);
+            document.getElementById('import_btn')?.addEventListener('click', importPosts);
+            document.getElementById('clear_all_btn')?.addEventListener('click', clearAllPosts);
+            
+            document.getElementById('example_btn')?.addEventListener('click', () => {
+                document.getElementById('import_text').value = '["Первый пост"]["Второй пост с \\"кавычками\\""]["Третий пост\\nс переносом строки"]';
+            });
+        }
+        
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+        
+        window.deletePost = deletePost;
+        window.updatePostText = updatePostText;
+    </script>
+</body>
+</html>

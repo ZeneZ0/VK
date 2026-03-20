@@ -4,7 +4,13 @@ from fastapi.templating import Jinja2Templates
 router = APIRouter(prefix="", tags=["pages"])
 templates = Jinja2Templates(directory="backend/app/templates")
 
+# Лендинг (для неавторизованных)
 @router.get("/")
+async def landing_page(request: Request):
+    return templates.TemplateResponse("landing.html", {"request": request})
+
+# Дашборд (главная панель для авторизованных)
+@router.get("/dashboard")
 async def dashboard_page(request: Request):
     return templates.TemplateResponse("dashboard.html", {"request": request})
 
@@ -16,6 +22,10 @@ async def profile_page(request: Request):
 async def screenshots_page(request: Request):
     return templates.TemplateResponse("screenshots.html", {"request": request})
 
+@router.get("/tokens")
+async def tokens_page(request: Request):
+    return templates.TemplateResponse("tokens.html", {"request": request})
+
 @router.get("/login")
 async def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
@@ -24,35 +34,31 @@ async def login_page(request: Request):
 async def register_page(request: Request):
     return templates.TemplateResponse("register.html", {"request": request})
 
-# Заглушки для будущих страниц (чтобы не было 404)
-@router.get("/tokens")
-async def tokens_page(request: Request):
-    return templates.TemplateResponse("coming_soon.html", {"request": request, "page_name": "Управление VK токенами"})
-
 @router.get("/posts")
 async def posts_page(request: Request):
-    return templates.TemplateResponse("coming_soon.html", {"request": request, "page_name": "Создание постов"})
+    return templates.TemplateResponse("posts.html", {"request": request})
 
 @router.get("/reposts_wall")
 async def reposts_wall_page(request: Request):
-    return templates.TemplateResponse("coming_soon.html", {"request": request, "page_name": "Создание репостов (на стену)"})
+    return templates.TemplateResponse("reposts_wall.html", {"request": request})
 
 @router.get("/reposts_dm")
 async def reposts_dm_page(request: Request):
-    return templates.TemplateResponse("coming_soon.html", {"request": request, "page_name": "Создание репостов (в лс)"})
+    return templates.TemplateResponse("reposts_dm.html", {"request": request})
 
 @router.get("/comments")
 async def comments_page(request: Request):
-    return templates.TemplateResponse("coming_soon.html", {"request": request, "page_name": "Создание комментариев"})
+    return templates.TemplateResponse("comments.html", {"request": request})
 
 @router.get("/likes")
 async def likes_page(request: Request):
-    return templates.TemplateResponse("coming_soon.html", {"request": request, "page_name": "Поставить лайки"})
+    return templates.TemplateResponse("likes.html", {"request": request})
 
 @router.get("/subscribe_group")
 async def subscribe_group_page(request: Request):
-    return templates.TemplateResponse("coming_soon.html", {"request": request, "page_name": "Подписаться на группу"})
+    return templates.TemplateResponse("subscribe_group.html", {"request": request})
 
 @router.get("/statistics")
 async def statistics_page(request: Request):
-    return templates.TemplateResponse("coming_soon.html", {"request": request, "page_name": "Статистика"})
+    return templates.TemplateResponse("statistics.html", {"request": request})
+# Заглушки для будущих страни

@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Создание комментариев | VK Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .comment-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background: white;
+            position: relative;
+        }
+        .comment-number {
+            position: absolute;
+            top: -12px;
+            left: 20px;
+            background: #fd7e14;
+            color: white;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+        .post-link-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        .comment-textarea {
+            width: 100%;
+            min-height: 100px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-family: inherit;
+            resize: vertical;
+            margin-top: 5px;
+        }
+        .link-preview {
+            background: #f8f9fa;
+            padding: 8px 12px;
+            border-radius: 8px;
+            margin-top: 8px;
+            font-size: 13px;
+            color: #666;
+        }
+        .distribution-info {
+            background: #e7f3ff;
+            border-radius: 12px;
+            padding: 15px 20px;
+            margin: 20px 0;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .stat-card {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #fd7e14;
+        }
+        .import-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 25px;
+        }
+        .import-textarea {
+            width: 100%;
+            min-height: 100px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        .sidebar ul li a {
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <div class="sidebar">
+                <h3>VK Manager</h3>
+                <ul>
+                    <li><a href="/dashboard">Главная</a></li>
+                    <li><a href="/profile">Редактировать профиль</a></li>
+                    <li><a href="/screenshots">Отправить скрины в тг</a></li>
+                    <li><a href="/tokens">Управление VK токенами</a></li>
+                    <li><a href="/posts">Создать посты</a></li>
+                    <li><a href="/reposts_wall">Создать репосты (на стену)</a></li>
+                    <li><a href="/reposts_dm">Создать репосты (в лс)</a></li>
+                    <li class="active"><a href="/comments">Создать комментарии</a></li>
+                    <li><a href="/likes">Поставить лайки</a></li>
+                    <li><a href="/subscribe_group">Подписаться на группу</a></li>
+                    <li><a href="/statistics">Статистика</a></li>
+                </ul>
+            </div>
+
+            <div class="content">
+                <div id="comments-content">
+                    <div class="loading-spinner">⏳ Загрузка...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+    <script>
+        let comments = [];
+        let bots = [];
+        let postLink = '';
+        let loading = false;
+
+        (async function() {
+            const token = getToken();
+            if (!token) {
+                window.location.href = '/login';
+                return;
+            }
+
+            await loadData();
+            render();
+        })();
+
+        async function loadData() {
+            loading = true;
+            render();
+            
+            try {
+                const botsResponse = await fetchWithAuth('/api/bots');
+                if (botsResponse.ok) {
+                    bots = await botsResponse.json();
+                }
+                
+                const savedComments = localStorage.getItem('vk_manager_comments');
+                if (savedComments) {
+                    comments = JSON.parse(savedComments);
+                } else {
+                    comments = [{ text: '', id: Date.now() }];
+                }
+                
+                const savedPostLink = localStorage.getItem('vk_manager_post_link');
+                if (savedPostLink) {
+                    postLink = savedPostLink;
+                }
+            } catch (e) {
+                console.error('Ошибка загрузки', e);
+            } finally {
+                loading = false;
+                render();
+            }
+        }
+
+        function saveCommentsToStorage() {
+            localStorage.setItem('vk_manager_comments', JSON.stringify(comments));
+        }
+
+        function savePostLinkToStorage() {
+            localStorage.setItem('vk_manager_post_link', postLink);
+        }
+
+        function addComment() {
+            comments.push({ text: '', id: Date.now() });
+            saveCommentsToStorage();
+            render();
+        }
+
+        function deleteComment(index) {
+            if (comments.length === 1) {
+                comments[0] = { text: '', id: Date.now() };
+                saveCommentsToStorage();
+                render();
+                return;
+            }
+            comments.splice(index, 1);
+            saveCommentsToStorage();
+            render();
+        }
+
+        function updateComment(index, text) {
+            comments[index].text = text;
+            saveCommentsToStorage();
+            render();
+        }
+
+        function updatePostLink(value) {
+            postLink = value;
+            savePostLinkToStorage();
+            render();
+        }
+
+        function importComments() {
+            const importText = document.getElementById('import_text').value.trim();
+            if (!importText) return;
+            
+            try {
+                const matches = importText.match(/\["(.*?)"\](?:\]|$)/gs);
+                if (matches) {
+                    const newComments = matches.map(match => {
+                        let text = match.slice(2, -1);
+                        text = text.replace(/\\"/g, '"');
+                        text = text.replace(/\\n/g, '\n');
+                        return { text: text, id: Date.now() + Math.random() };
+                    });
+                    
+                    if (newComments.length > 0) {
+                        comments = newComments;
+                        saveCommentsToStorage();
+                        render();
+                        document.getElementById('import_text').value = '';
+                        alert(`Импортировано ${newComments.length} комментариев`);
+                    }
+                } else {
+                    alert('Неверный формат. Используйте: ["Комментарий 1"]["Комментарий 2"]');
+                }
+            } catch (e) {
+                alert('Ошибка парсинга');
+                console.error(e);
+            }
+        }
+
+        function validatePostLink(link) {
+            const vkPattern = /https?:\/\/(vk\.com|m\.vk\.com)\/wall[-\d]+_\d+/;
+            return vkPattern.test(link);
+        }
+
+        function getDistributionInfo() {
+            const activeBots = bots.filter(b => b.status === 'active');
+            const validComments = comments.filter(c => c.text.trim().length > 0);
+            
+            let botsUsed = Math.min(activeBots.length, validComments.length);
+            let commentsUsed = Math.min(validComments.length, activeBots.length);
+            let unusedBots = Math.max(0, activeBots.length - validComments.length);
+            let unusedComments = Math.max(0, validComments.length - activeBots.length);
+            
+            return { activeBots, validComments, botsUsed, commentsUsed, unusedBots, unusedComments };
+        }
+
+        async function publishComments() {
+            const isValidLink = validatePostLink(postLink);
+            if (!isValidLink) {
+                alert('Введите корректную ссылку на пост VK');
+                return;
+            }
+            
+            const validComments = comments.filter(c => c.text.trim().length > 0);
+            if (validComments.length === 0) {
+                alert('Нет комментариев для публикации');
+                return;
+            }
+            
+            const activeBots = bots.filter(b => b.status === 'active');
+            if (activeBots.length === 0) {
+                alert('Нет активных ботов. Добавьте VK токены');
+                return;
+            }
+            
+            const { botsUsed, commentsUsed, unusedBots, unusedComments } = getDistributionInfo();
+            
+            let message = `Опубликовать комментарии под постом:\n${postLink}\n\n`;
+            message += `📝 Комментариев: ${validComments.length}\n`;
+            message += `🤖 Активных ботов: ${activeBots.length}\n`;
+            message += `📊 Будет использовано: ${botsUsed} ботов, ${commentsUsed} комментариев\n`;
+            
+            if (unusedBots > 0) message += `⚠️ ${unusedBots} ботов не получат комментарии (не хватило)\n`;
+            if (unusedComments > 0) message += `⚠️ ${unusedComments} комментариев не будут опубликованы (не хватило ботов)\n`;
+            
+            if (!confirm(message + '\nПродолжить?')) return;
+            
+            alert(`Отправка комментариев...\n(Функция будет реализована позже)`);
+        }
+
+        function render() {
+            const container = document.getElementById('comments-content');
+            const isValidLink = validatePostLink(postLink);
+            const validComments = comments.filter(c => c.text.trim().length > 0);
+            const activeBots = bots.filter(b => b.status === 'active');
+            const { botsUsed, commentsUsed, unusedBots, unusedComments } = getDistributionInfo();
+            
+            if (loading) {
+                container.innerHTML = `<div class="loading-spinner">⏳ Загрузка...</div>`;
+                return;
+            }
+            
+            container.innerHTML = `
+                <h1 class="page-title">Создание комментариев</h1>
+                <div class="page-subtitle">Оставляйте комментарии под постами VK через ваших ботов</div>
+                <hr>
+
+                <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    ⚠️ <strong>Подписка истекла</strong><br>
+                    Оформите подписку для доступа к сервисам<br>
+                    <a href="/subscribe" style="color: #007bff;">Оформить подписку →</a>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value">${validComments.length}</div>
+                        <div>Комментариев</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${activeBots.length}</div>
+                        <div>Активных ботов</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${botsUsed}</div>
+                        <div>Будет использовано</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${commentsUsed}</div>
+                        <div>Опубликуется</div>
+                    </div>
+                </div>
+
+                <!-- Ссылка на пост -->
+                <div class="card">
+                    <h3>🔗 Ссылка на пост VK</h3>
+                    <input type="text" id="post_link" class="post-link-input" value="${escapeHtml(postLink)}" placeholder="https://vk.com/wall-123456_789">
+                    <div class="link-preview">
+                        ${postLink ? (isValidLink ? '✅ Формат ссылки верный' : '❌ Неверный формат. Пример: https://vk.com/wall-123456_789') : 'Введите ссылку на пост VK'}
+                    </div>
+                </div>
+
+                <!-- Массовый импорт комментариев -->
+                <div class="import-section">
+                    <h3 style="margin-bottom: 10px;">📥 Массовый импорт комментариев</h3>
+                    <p style="font-size: 14px; color: #666; margin-bottom: 10px;">Формат: <code>["Комментарий 1"]["Комментарий 2"]["Комментарий с \\"кавычками\\""]</code></p>
+                    <textarea id="import_text" class="import-textarea" placeholder='["Отличный пост!"]["Спасибо, интересно"]["Подпишусь на вас"]'></textarea>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <button class="btn" id="import_btn" style="background: #28a745;">📥 Импортировать</button>
+                        <button class="btn" id="example_btn" style="background: #6c757d;">📋 Пример</button>
+                    </div>
+                </div>
+
+                <!-- Список комментариев -->
+                <div id="comments_list">
+                    ${comments.map((comment, index) => `
+                        <div class="comment-card">
+                            <div class="comment-number">Комментарий #${index + 1}</div>
+                            <label style="font-weight: 500; display: block; margin-bottom: 5px;">Текст комментария:</label>
+                            <textarea class="comment-textarea" data-index="${index}" placeholder="Введите текст комментария...">${escapeHtml(comment.text)}</textarea>
+                            <div style="font-size: 12px; color: #888; margin-top: 8px;">
+                                Символов: ${comment.text.length} | Слов: ${comment.text.split(/\s+/).filter(w => w.length > 0).length}
+                            </div>
+                            <div style="display: flex; justify-content: flex-end; margin-top: 10px;">
+                                <button class="btn-icon btn-delete" onclick="deleteComment(${index})" style="background: none; border: none; color: #dc3545; cursor: pointer;">🗑️ Удалить</button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <div style="display: flex; gap: 15px; margin-top: 20px; flex-wrap: wrap;">
+                    <button class="btn" id="add_comment_btn" style="background: #28a745;">➕ Добавить комментарий</button>
+                    <button class="btn" id="publish_btn" style="background: #007bff;">💬 Опубликовать комментарии</button>
+                </div>
+
+                <div class="distribution-info">
+                    <h4>📊 Как распределяются комментарии:</h4>
+                    <p>• Каждый бот получит свой уникальный комментарий из списка</p>
+                    <p>• Если ботов больше чем комментариев — лишние боты не получат заданий</p>
+                    <p>• Если комментариев больше чем ботов — лишние комментарии не будут опубликованы</p>
+                    <p>• Поддерживаются переносы строк и специальные символы</p>
+                    ${unusedBots > 0 ? `<p style="color: #856404;">⚠️ ${unusedBots} ботов не получат комментарии (не хватило комментариев)</p>` : ''}
+                    ${unusedComments > 0 ? `<p style="color: #856404;">⚠️ ${unusedComments} комментариев не будут опубликованы (не хватило ботов)</p>` : ''}
+                </div>
+            `;
+            
+            document.querySelectorAll('.comment-textarea').forEach(textarea => {
+                const index = parseInt(textarea.dataset.index);
+                textarea.addEventListener('input', (e) => {
+                    updateComment(index, e.target.value);
+                });
+            });
+            
+            document.getElementById('post_link')?.addEventListener('input', (e) => {
+                updatePostLink(e.target.value);
+            });
+            
+            document.getElementById('add_comment_btn')?.addEventListener('click', addComment);
+            document.getElementById('publish_btn')?.addEventListener('click', publishComments);
+            document.getElementById('import_btn')?.addEventListener('click', importComments);
+            
+            document.getElementById('example_btn')?.addEventListener('click', () => {
+                document.getElementById('import_text').value = '["Отличный пост! Спасибо"]["Очень интересно, буду следить"]["🔥 🔥 🔥"]["Подписался на вас!"]';
+            });
+        }
+        
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+        
+        window.deleteComment = deleteComment;
+        window.updateComment = updateComment;
+    </script>
+</body>
+</html>

@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Управление VK токенами | VK Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .token-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            border: 1px solid #e0e0e0;
+            transition: all 0.2s;
+        }
+        .token-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        .token-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .token-name {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }
+        .token-status {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .status-active {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .status-checking {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .token-info {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 8px;
+            word-break: break-all;
+        }
+        .token-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 12px;
+        }
+        .btn-icon {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 18px;
+            padding: 5px;
+            transition: transform 0.1s;
+        }
+        .btn-icon:hover {
+            transform: scale(1.1);
+        }
+        .btn-delete {
+            color: #dc3545;
+        }
+        .btn-refresh {
+            color: #007bff;
+        }
+        .add-token-form {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 25px;
+            border: 1px solid #e0e0e0;
+        }
+        .form-row {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .form-row .form-group {
+            flex: 1;
+            min-width: 200px;
+        }
+        .help-text {
+            font-size: 12px;
+            color: #888;
+            margin-top: 5px;
+        }
+        .limit-badge {
+            background: #e9ecef;
+            padding: 5px 10px;
+            border-radius: 8px;
+            font-size: 13px;
+            display: inline-block;
+            margin-bottom: 15px;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 50px;
+            color: #888;
+        }
+        .sidebar ul li a {
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+        .loading-spinner {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <div class="sidebar">
+                <h3>VK Manager</h3>
+                <ul>
+                    <li><a href="/dashboard">Главная</a></li>
+                    <li><a href="/profile">Редактировать профиль</a></li>
+                    <li><a href="/screenshots">Отправить скрины в тг</a></li>
+                    <li class="active"><a href="/tokens">Управление VK токенами</a></li>
+                    <li><a href="/posts">Создать посты</a></li>
+                    <li><a href="/reposts_wall">Создать репосты (на стену)</a></li>
+                    <li><a href="/reposts_dm">Создать репосты (в лс)</a></li>
+                    <li><a href="/comments">Создать комментарии</a></li>
+                    <li><a href="/likes">Поставить лайки</a></li>
+                    <li><a href="/subscribe_group">Подписаться на группу</a></li>
+                    <li><a href="/statistics">Статистика</a></li>
+                </ul>
+            </div>
+
+            <div class="content">
+                <div id="tokens-content">
+                    <div class="loading-spinner">⏳ Загрузка...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+    <script>
+        let bots = [];
+        let loading = false;
+
+        (async function() {
+            const token = getToken();
+            if (!token) {
+                window.location.href = '/login';
+                return;
+            }
+
+            await loadBots();
+        })();
+
+        async function loadBots() {
+            try {
+                loading = true;
+                render();
+                
+                // Реальный запрос к API
+                const response = await fetchWithAuth('/api/bots');
+                if (response.ok) {
+                    bots = await response.json();
+                } else {
+                    bots = [];
+                    console.error('Ошибка загрузки ботов:', response.status);
+                }
+            } catch (e) {
+                console.error('Ошибка загрузки ботов', e);
+                bots = [];
+            } finally {
+                loading = false;
+                render();
+            }
+        }
+
+        async function addBot(name, token) {
+            try {
+                const response = await fetchWithAuth('/api/bots', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, token })
+                });
+                
+                if (response.ok) {
+                    const newBot = await response.json();
+                    bots.push(newBot);
+                    render();
+                    return true;
+                } else {
+                    const error = await response.json();
+                    alert(error.detail || 'Ошибка добавления бота');
+                    return false;
+                }
+            } catch (e) {
+                console.error('Ошибка добавления бота', e);
+                alert('Ошибка соединения с сервером');
+                return false;
+            }
+        }
+
+        async function deleteBot(botId) {
+            if (!confirm('Удалить этого бота?')) return;
+            
+            try {
+                const response = await fetchWithAuth(`/api/bots/${botId}`, { 
+                    method: 'DELETE' 
+                });
+                
+                if (response.ok) {
+                    bots = bots.filter(b => b.id !== botId);
+                    render();
+                } else {
+                    alert('Ошибка удаления бота');
+                }
+            } catch (e) {
+                console.error('Ошибка удаления', e);
+                alert('Ошибка соединения с сервером');
+            }
+        }
+
+        async function checkBot(botId) {
+            const bot = bots.find(b => b.id === botId);
+            if (!bot) return;
+            
+            try {
+                // Меняем статус на "проверка"
+                const originalStatus = bot.status;
+                bot.status = 'checking';
+                render();
+                
+                const response = await fetchWithAuth(`/api/bots/${botId}/check`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.valid) {
+                    bot.status = 'active';
+                    bot.error = null;
+                    bot.last_check = new Date().toLocaleString();
+                    if (result.user_info) {
+                        bot.user_info = result.user_info;
+                    }
+                    alert(`✅ Токен валиден! ${result.user_info ? `Бот: ${result.user_info.first_name} ${result.user_info.last_name}` : ''}`);
+                } else {
+                    bot.status = 'error';
+                    bot.error = result.error || 'Токен недействителен';
+                    bot.last_check = new Date().toLocaleString();
+                    alert(`❌ Ошибка: ${bot.error}`);
+                }
+                render();
+            } catch (e) {
+                console.error('Ошибка проверки', e);
+                bot.status = 'error';
+                bot.error = 'Ошибка соединения с сервером';
+                render();
+                alert('Ошибка соединения с сервером');
+            }
+        }
+
+        function render() {
+            const container = document.getElementById('tokens-content');
+            const maxBots = 48;
+            
+            if (loading) {
+                container.innerHTML = `<div class="loading-spinner">⏳ Загрузка...</div>`;
+                return;
+            }
+            
+            container.innerHTML = `
+                <h1 class="page-title">Управление VK токенами</h1>
+                <div class="page-subtitle">Добавляйте и управляйте токенами ваших VK ботов</div>
+                <hr>
+
+                <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    ⚠️ <strong>Подписка истекла</strong><br>
+                    Оформите подписку для доступа к сервисам<br>
+                    <a href="/subscribe" style="color: #007bff;">Оформить подписку →</a>
+                </div>
+
+                <div class="limit-badge">
+                    📊 Использовано ботов: ${bots.length} / ${maxBots}
+                </div>
+
+                <div class="add-token-form">
+                    <h3 style="margin-bottom: 15px;">➕ Добавить нового бота</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Имя бота</label>
+                            <input type="text" id="bot_name" class="input-field" placeholder="Например: Мой бот #1">
+                        </div>
+                        <div class="form-group">
+                            <label>VK токен (access_token)</label>
+                            <input type="password" id="bot_token" class="input-field" placeholder="vk1.a.xxxxx...">
+                        </div>
+                        <div class="form-group" style="display: flex; align-items: flex-end;">
+                            <button class="btn" id="add_bot_btn" style="width: 100%;">➕ Добавить</button>
+                        </div>
+                    </div>
+                    <div class="help-text">
+                        🔑 Как получить токен: 
+                        <a href="https://vk.com/apps?act=manage" target="_blank">Создайте VK приложение</a>, 
+                        затем в настройках получите access_token с правами: wall, photos, groups, messages
+                    </div>
+                </div>
+
+                <h3 style="margin: 25px 0 15px 0;">🤖 Мои боты (${bots.length})</h3>
+                
+                ${bots.length === 0 ? `
+                    <div class="empty-state">
+                        <div style="font-size: 48px; margin-bottom: 15px;">🤖</div>
+                        <p>У вас пока нет добавленных ботов</p>
+                        <p style="font-size: 14px;">Добавьте первого бота, чтобы начать работу</p>
+                    </div>
+                ` : bots.map(bot => `
+                    <div class="token-card">
+                        <div class="token-header">
+                            <span class="token-name">${escapeHtml(bot.name)}</span>
+                            <span class="token-status ${bot.status === 'active' ? 'status-active' : (bot.status === 'error' ? 'status-error' : 'status-checking')}">
+                                ${bot.status === 'active' ? '✅ Активен' : (bot.status === 'error' ? '❌ Ошибка' : '⏳ Проверка...')}
+                            </span>
+                        </div>
+                        <div class="token-info">
+                            🔑 Токен: ${escapeHtml(bot.token_display || bot.token?.substring(0, 20) + '...' || '—')}
+                        </div>
+                        ${bot.user_info ? `
+                            <div class="token-info">
+                                👤 Владелец: ${escapeHtml(bot.user_info.first_name)} ${escapeHtml(bot.user_info.last_name || '')}
+                                ${bot.user_info.id ? `(id${bot.user_info.id})` : ''}
+                            </div>
+                        ` : ''}
+                        <div class="token-info">
+                            🕐 Последняя проверка: ${bot.last_check || 'не проверялся'}
+                        </div>
+                        ${bot.error ? `<div class="token-info" style="color: #dc3545;">⚠️ ${escapeHtml(bot.error)}</div>` : ''}
+                        <div class="token-actions">
+                            <button class="btn-icon btn-refresh" onclick="checkBot(${bot.id})" title="Проверить токен">🔄</button>
+                            <button class="btn-icon btn-delete" onclick="deleteBot(${bot.id})" title="Удалить">🗑️</button>
+                        </div>
+                    </div>
+                `).join('')}
+            `;
+            
+            document.getElementById('add_bot_btn')?.addEventListener('click', async () => {
+                const name = document.getElementById('bot_name').value.trim();
+                const token = document.getElementById('bot_token').value.trim();
+                
+                if (!name) {
+                    alert('Введите имя бота');
+                    return;
+                }
+                if (!token) {
+                    alert('Введите VK токен');
+                    return;
+                }
+                if (bots.length >= maxBots) {
+                    alert('Достигнут лимит ботов. Оформите подписку для увеличения лимита');
+                    return;
+                }
+                
+                const success = await addBot(name, token);
+                if (success) {
+                    document.getElementById('bot_name').value = '';
+                    document.getElementById('bot_token').value = '';
+                }
+            });
+        }
+        
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+        
+        window.deleteBot = deleteBot;
+        window.checkBot = checkBot;
+    </script>
+</body>
+</html>

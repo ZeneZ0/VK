@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Репосты в ЛС | VK Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .repost-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background: white;
+            position: relative;
+        }
+        .repost-number {
+            position: absolute;
+            top: -12px;
+            left: 20px;
+            background: #17a2b8;
+            color: white;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+        .link-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        .link-preview {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 8px;
+            font-size: 13px;
+            color: #666;
+        }
+        .bots-selector {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .bots-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .bot-checkbox {
+            background: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            border: 1px solid #ddd;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .bot-checkbox.selected {
+            background: #17a2b8;
+            border-color: #17a2b8;
+            color: white;
+        }
+        .bot-checkbox input {
+            display: none;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .stat-card {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #17a2b8;
+        }
+        .message-input {
+            width: 100%;
+            min-height: 100px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-family: inherit;
+            resize: vertical;
+        }
+        .sidebar ul li a {
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <div class="sidebar">
+                <h3>VK Manager</h3>
+                <ul>
+                    <li><a href="/dashboard">Главная</a></li>
+                    <li><a href="/profile">Редактировать профиль</a></li>
+                    <li><a href="/screenshots">Отправить скрины в тг</a></li>
+                    <li><a href="/tokens">Управление VK токенами</a></li>
+                    <li><a href="/posts">Создать посты</a></li>
+                    <li><a href="/reposts_wall">Создать репосты (на стену)</a></li>
+                    <li class="active"><a href="/reposts_dm">Создать репосты (в лс)</a></li>
+                    <li><a href="/comments">Создать комментарии</a></li>
+                    <li><a href="/likes">Поставить лайки</a></li>
+                    <li><a href="/subscribe_group">Подписаться на группу</a></li>
+                    <li><a href="/statistics">Статистика</a></li>
+                </ul>
+            </div>
+
+            <div class="content">
+                <div id="dm-content">
+                    <div class="loading-spinner">⏳ Загрузка...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+    <script>
+        let postLinks = [];
+        let bots = [];
+        let selectedBotIds = [];
+        let globalMessage = '';
+        let loading = false;
+
+        (async function() {
+            const token = getToken();
+            if (!token) {
+                window.location.href = '/login';
+                return;
+            }
+
+            await loadData();
+            render();
+        })();
+
+        async function loadData() {
+            loading = true;
+            render();
+            
+            try {
+                const botsResponse = await fetchWithAuth('/api/bots');
+                if (botsResponse.ok) {
+                    bots = await botsResponse.json();
+                    selectedBotIds = bots.filter(b => b.status === 'active').map(b => b.id);
+                }
+                
+                const savedLinks = localStorage.getItem('vk_manager_reposts_dm_links');
+                if (savedLinks) {
+                    postLinks = JSON.parse(savedLinks);
+                } else {
+                    postLinks = [{ link: '', id: Date.now() }];
+                }
+                
+                const savedMessage = localStorage.getItem('vk_manager_reposts_dm_message');
+                if (savedMessage) {
+                    globalMessage = savedMessage;
+                }
+            } catch (e) {
+                console.error('Ошибка загрузки', e);
+            } finally {
+                loading = false;
+                render();
+            }
+        }
+
+        function saveLinksToStorage() {
+            localStorage.setItem('vk_manager_reposts_dm_links', JSON.stringify(postLinks));
+        }
+
+        function saveMessageToStorage() {
+            localStorage.setItem('vk_manager_reposts_dm_message', globalMessage);
+        }
+
+        function addLink() {
+            postLinks.push({ link: '', id: Date.now() });
+            saveLinksToStorage();
+            render();
+        }
+
+        function deleteLink(index) {
+            if (postLinks.length === 1) {
+                postLinks[0] = { link: '', id: Date.now() };
+                saveLinksToStorage();
+                render();
+                return;
+            }
+            postLinks.splice(index, 1);
+            saveLinksToStorage();
+            render();
+        }
+
+        function updateLink(index, value) {
+            postLinks[index].link = value;
+            saveLinksToStorage();
+            render();
+        }
+
+        function updateGlobalMessage(value) {
+            globalMessage = value;
+            saveMessageToStorage();
+            render();
+        }
+
+        function toggleBot(botId) {
+            const index = selectedBotIds.indexOf(botId);
+            if (index === -1) {
+                selectedBotIds.push(botId);
+            } else {
+                selectedBotIds.splice(index, 1);
+            }
+            render();
+        }
+
+        function selectAllBots() {
+            selectedBotIds = bots.filter(b => b.status === 'active').map(b => b.id);
+            render();
+        }
+
+        function validateLink(link) {
+            const vkPattern = /https?:\/\/(vk\.com|m\.vk\.com)\/wall[-\d]+_\d+/;
+            return vkPattern.test(link);
+        }
+
+        async function publishReposts() {
+            const validLinks = postLinks.filter(l => validateLink(l.link));
+            
+            if (validLinks.length === 0) {
+                alert('Нет валидных ссылок на посты');
+                return;
+            }
+            
+            const selectedBots = bots.filter(b => selectedBotIds.includes(b.id));
+            if (selectedBots.length === 0) {
+                alert('Выберите хотя бы одного бота');
+                return;
+            }
+            
+            const totalOperations = validLinks.length * selectedBots.length;
+            if (!confirm(`Сделать репост ${validLinks.length} постов через ${selectedBots.length} ботов?\nВсего операций: ${totalOperations}\nСообщение: ${globalMessage ? 'да' : 'нет'}`)) {
+                return;
+            }
+            
+            alert(`Отправка ${validLinks.length} репостов в ЛС через ${selectedBots.length} ботов...\n(Функция будет реализована позже)`);
+        }
+
+        function render() {
+            const container = document.getElementById('dm-content');
+            const activeBots = bots.filter(b => b.status === 'active');
+            const selectedBots = bots.filter(b => selectedBotIds.includes(b.id));
+            const validLinks = postLinks.filter(l => validateLink(l.link));
+            
+            if (loading) {
+                container.innerHTML = `<div class="loading-spinner">⏳ Загрузка...</div>`;
+                return;
+            }
+            
+            container.innerHTML = `
+                <h1 class="page-title">Массовые репосты в ЛС</h1>
+                <div class="page-subtitle">Делайте репосты постов себе в ЛС через messages.send</div>
+                <hr>
+
+                <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    ⚠️ <strong>Подписка истекла</strong><br>
+                    Оформите подписку для доступа к сервисам<br>
+                    <a href="/subscribe" style="color: #007bff;">Оформить подписку →</a>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value">${postLinks.length}</div>
+                        <div>Ссылок для репоста</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${validLinks.length}</div>
+                        <div>Валидных ссылок</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${selectedBots.length}</div>
+                        <div>Выбрано ботов</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${validLinks.length * selectedBots.length}</div>
+                        <div>Всего операций</div>
+                    </div>
+                </div>
+
+                <!-- Ссылки на посты -->
+                <div class="card">
+                    <h3>🔗 Ссылки на посты VK</h3>
+                    <p style="font-size: 14px; color: #666; margin-bottom: 15px;">Каждая ссылка с новой строки или через запятую</p>
+                    
+                    <div id="links_list">
+                        ${postLinks.map((item, index) => {
+                            const isValid = validateLink(item.link);
+                            return `
+                                <div style="margin-bottom: 15px;">
+                                    <div style="display: flex; gap: 10px; align-items: flex-start;">
+                                        <input type="text" class="link-input" data-index="${index}" value="${escapeHtml(item.link)}" placeholder="https://vk.com/wall-229000453_1224" style="flex: 1;">
+                                        <button class="btn-icon btn-delete" onclick="deleteLink(${index})" style="background: none; border: none; color: #dc3545; cursor: pointer; font-size: 20px;">🗑️</button>
+                                    </div>
+                                    <div class="link-preview">
+                                        ${item.link ? (isValid ? '✅ Формат ссылки верный' : '❌ Неверный формат. Пример: https://vk.com/wall-229000453_1224') : 'Введите ссылку на пост VK'}
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                    
+                    <button class="btn" id="add_link_btn" style="background: #28a745; margin-top: 10px;">➕ Добавить ссылку</button>
+                </div>
+
+                <!-- Сообщение к репосту -->
+                <div class="card">
+                    <h3>💬 Сообщение к репосту (опционально)</h3>
+                    <textarea id="global_message" class="message-input" placeholder="Добавьте текст к репосту (будет добавлен к каждому репосту)...">${escapeHtml(globalMessage)}</textarea>
+                    <div class="help-text">Текст будет добавлен к каждому репосту перед отправкой</div>
+                </div>
+
+                <!-- Выбор ботов -->
+                <div class="bots-selector">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <h3 style="margin: 0;">🤖 Доступные боты (${activeBots.length})</h3>
+                        <button class="btn" id="select_all_btn" style="background: #6c757d; padding: 5px 15px;">Выбрать всех</button>
+                    </div>
+                    
+                    ${activeBots.length === 0 ? `
+                        <div style="text-align: center; padding: 30px; color: #888;">
+                            <p>❌ Нет доступных ботов с VK токенами</p>
+                            <p style="font-size: 14px;">Добавьте ботов в разделе "Управление VK токенами"</p>
+                        </div>
+                    ` : `
+                        <div class="bots-list">
+                            ${activeBots.map(bot => `
+                                <div class="bot-checkbox ${selectedBotIds.includes(bot.id) ? 'selected' : ''}" onclick="toggleBot(${bot.id})">
+                                    <input type="checkbox" ${selectedBotIds.includes(bot.id) ? 'checked' : ''} style="display: none;">
+                                    🤖 ${escapeHtml(bot.name)}
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="help-text" style="margin-top: 15px;">Выбрано ботов: ${selectedBots.length}</div>
+                    `}
+                </div>
+
+                <button class="btn" id="publish_btn" style="background: #007bff; width: 100%; margin-top: 20px;">
+                    🚀 Сделать репосты (${validLinks.length} ссылок × ${selectedBots.length} ботов = ${validLinks.length * selectedBots.length} операций)
+                </button>
+
+                <div class="info-block" style="margin-top: 30px;">
+                    <h4>📌 Как это работает:</h4>
+                    <p>• Каждая ссылка будет отправлена каждым выбранным ботом</p>
+                    <p>• Репост делается в "Сохранённые сообщения" каждого бота</p>
+                    <p>• Используется метод VK API messages.send</p>
+                    <p>• Поддерживаемые форматы: vk.com/wall-owner_id_post_id</p>
+                </div>
+            `;
+            
+            document.querySelectorAll('.link-input').forEach(input => {
+                const index = parseInt(input.dataset.index);
+                input.addEventListener('input', (e) => {
+                    updateLink(index, e.target.value);
+                });
+            });
+            
+            document.getElementById('global_message')?.addEventListener('input', (e) => {
+                updateGlobalMessage(e.target.value);
+            });
+            
+            document.getElementById('add_link_btn')?.addEventListener('click', addLink);
+            document.getElementById('publish_btn')?.addEventListener('click', publishReposts);
+            document.getElementById('select_all_btn')?.addEventListener('click', selectAllBots);
+        }
+        
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+        
+        window.deleteLink = deleteLink;
+        window.updateLink = updateLink;
+        window.toggleBot = toggleBot;
+    </script>
+</body>
+</html>

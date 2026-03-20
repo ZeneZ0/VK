@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Репосты на стену | VK Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .repost-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background: white;
+            position: relative;
+        }
+        .repost-number {
+            position: absolute;
+            top: -12px;
+            left: 20px;
+            background: #28a745;
+            color: white;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+        .link-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        .link-preview {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 8px;
+            font-size: 13px;
+            color: #666;
+        }
+        .import-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 25px;
+        }
+        .import-textarea {
+            width: 100%;
+            min-height: 100px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .stat-card {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #28a745;
+        }
+        .sidebar ul li a {
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <div class="sidebar">
+                <h3>VK Manager</h3>
+                <ul>
+                    <li><a href="/dashboard">Главная</a></li>
+                    <li><a href="/profile">Редактировать профиль</a></li>
+                    <li><a href="/screenshots">Отправить скрины в тг</a></li>
+                    <li><a href="/tokens">Управление VK токенами</a></li>
+                    <li><a href="/posts">Создать посты</a></li>
+                    <li class="active"><a href="/reposts_wall">Создать репосты (на стену)</a></li>
+                    <li><a href="/reposts_dm">Создать репосты (в лс)</a></li>
+                    <li><a href="/comments">Создать комментарии</a></li>
+                    <li><a href="/likes">Поставить лайки</a></li>
+                    <li><a href="/subscribe_group">Подписаться на группу</a></li>
+                    <li><a href="/statistics">Статистика</a></li>
+                </ul>
+            </div>
+
+            <div class="content">
+                <div id="reposts-content">
+                    <div class="loading-spinner">⏳ Загрузка...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+    <script>
+        let reposts = [];
+        let bots = [];
+        let loading = false;
+
+        (async function() {
+            const token = getToken();
+            if (!token) {
+                window.location.href = '/login';
+                return;
+            }
+
+            await loadData();
+            render();
+        })();
+
+        async function loadData() {
+            loading = true;
+            render();
+            
+            try {
+                const botsResponse = await fetchWithAuth('/api/bots');
+                if (botsResponse.ok) {
+                    bots = await botsResponse.json();
+                }
+                
+                const savedReposts = localStorage.getItem('vk_manager_reposts_wall');
+                if (savedReposts) {
+                    reposts = JSON.parse(savedReposts);
+                } else {
+                    reposts = [{ text: '', link: '', id: Date.now() }];
+                }
+            } catch (e) {
+                console.error('Ошибка загрузки', e);
+            } finally {
+                loading = false;
+                render();
+            }
+        }
+
+        function saveToStorage() {
+            localStorage.setItem('vk_manager_reposts_wall', JSON.stringify(reposts));
+        }
+
+        function addRepost() {
+            reposts.push({ text: '', link: '', id: Date.now() });
+            saveToStorage();
+            render();
+        }
+
+        function deleteRepost(index) {
+            if (reposts.length === 1) {
+                reposts[0] = { text: '', link: '', id: Date.now() };
+                saveToStorage();
+                render();
+                return;
+            }
+            reposts.splice(index, 1);
+            saveToStorage();
+            render();
+        }
+
+        function updateRepost(index, field, value) {
+            reposts[index][field] = value;
+            saveToStorage();
+            render();
+        }
+
+        function importReposts() {
+            const importText = document.getElementById('import_text').value.trim();
+            if (!importText) return;
+            
+            try {
+                const matches = importText.match(/\["(.*?)",\s*"(.*?)"\]/gs);
+                if (matches) {
+                    const newReposts = matches.map(match => {
+                        const parts = match.match(/\["(.*?)",\s*"(.*?)"\]/);
+                        if (parts) {
+                            let text = parts[1];
+                            let link = parts[2];
+                            text = text.replace(/\\"/g, '"');
+                            text = text.replace(/\\n/g, '\n');
+                            return { text: text, link: link, id: Date.now() + Math.random() };
+                        }
+                        return null;
+                    }).filter(r => r);
+                    
+                    if (newReposts.length > 0) {
+                        reposts = newReposts;
+                        saveToStorage();
+                        render();
+                        document.getElementById('import_text').value = '';
+                        alert(`Импортировано ${newReposts.length} репостов`);
+                    }
+                } else {
+                    alert('Неверный формат. Используйте: ["Текст", "https://ссылка"]');
+                }
+            } catch (e) {
+                alert('Ошибка парсинга');
+                console.error(e);
+            }
+        }
+
+        function clearAll() {
+            if (confirm('Очистить все репосты?')) {
+                reposts = [{ text: '', link: '', id: Date.now() }];
+                saveToStorage();
+                render();
+            }
+        }
+
+        function validateLink(link) {
+            const vkPattern = /https?:\/\/(vk\.com|m\.vk\.com)\/wall[-\d]+_\d+/;
+            return vkPattern.test(link);
+        }
+
+        async function publishReposts() {
+            const validReposts = reposts.filter(r => r.text.trim().length > 0 && validateLink(r.link));
+            
+            if (validReposts.length === 0) {
+                alert('Нет валидных репостов. Заполните текст и ссылку на пост VK');
+                return;
+            }
+            
+            const activeBots = bots.filter(b => b.status === 'active');
+            if (activeBots.length === 0) {
+                alert('Нет активных ботов. Добавьте VK токены');
+                return;
+            }
+            
+            const totalOperations = validReposts.length * activeBots.length;
+            if (!confirm(`Сделать репост ${validReposts.length} постов через ${activeBots.length} ботов? (Всего операций: ${totalOperations})`)) {
+                return;
+            }
+            
+            alert(`Отправка ${validReposts.length} репостов через ${activeBots.length} ботов...\n(Функция будет реализована позже)`);
+        }
+
+        function render() {
+            const container = document.getElementById('reposts-content');
+            const activeBotsCount = bots.filter(b => b.status === 'active').length;
+            const validCount = reposts.filter(r => r.text.trim().length > 0 && validateLink(r.link)).length;
+            
+            if (loading) {
+                container.innerHTML = `<div class="loading-spinner">⏳ Загрузка...</div>`;
+                return;
+            }
+            
+            container.innerHTML = `
+                <h1 class="page-title">Создание репостов (на стену)</h1>
+                <div class="page-subtitle">Репостите посты через ваших ботов VK</div>
+                <hr>
+
+                <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    ⚠️ <strong>Подписка истекла</strong><br>
+                    Оформите подписку для доступа к сервисам<br>
+                    <a href="/subscribe" style="color: #007bff;">Оформить подписку →</a>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value">${reposts.length}</div>
+                        <div>Всего задач</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${validCount}</div>
+                        <div>Валидных</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${activeBotsCount}</div>
+                        <div>Активных ботов</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${validCount * activeBotsCount}</div>
+                        <div>Всего операций</div>
+                    </div>
+                </div>
+
+                <div class="import-section">
+                    <h3 style="margin-bottom: 10px;">📥 Массовый импорт</h3>
+                    <p style="font-size: 14px; color: #666; margin-bottom: 10px;">Формат: <code>["Текст репоста", "https://ссылка.на.пост"]</code></p>
+                    <textarea id="import_text" class="import-textarea" placeholder='["Первый репост", "https://vk.com/wall-123456_789"]["Второй репост", "https://vk.com/wall-123456_790"]'></textarea>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <button class="btn" id="import_btn" style="background: #28a745;">📥 Импортировать</button>
+                        <button class="btn" id="example_btn" style="background: #6c757d;">📋 Пример</button>
+                        <button class="btn btn-outline-danger" id="clear_all_btn">🗑️ Очистить все</button>
+                    </div>
+                </div>
+
+                <div id="reposts_list">
+                    ${reposts.map((repost, index) => {
+                        const isValidLink = validateLink(repost.link);
+                        return `
+                            <div class="repost-card">
+                                <div class="repost-number">Задача #${index + 1}</div>
+                                
+                                <div style="margin-bottom: 15px;">
+                                    <label style="font-weight: 500; display: block; margin-bottom: 5px;">Текст репоста:</label>
+                                    <textarea class="post-textarea" data-index="${index}" data-field="text" style="width: 100%; min-height: 80px; padding: 10px; border: 1px solid #ddd; border-radius: 8px;">${escapeHtml(repost.text)}</textarea>
+                                    <div style="font-size: 12px; color: #888; margin-top: 5px;">Символов: ${repost.text.length}</div>
+                                </div>
+                                
+                                <div style="margin-bottom: 15px;">
+                                    <label style="font-weight: 500; display: block; margin-bottom: 5px;">Ссылка на пост VK:</label>
+                                    <input type="text" class="link-input" data-index="${index}" data-field="link" value="${escapeHtml(repost.link)}" placeholder="https://vk.com/wall-123456_7890">
+                                    <div class="link-preview">
+                                        ${repost.link ? (isValidLink ? '✅ Ссылка валидна' : '❌ Неверный формат ссылки') : 'Введите ссылку на пост VK'}
+                                    </div>
+                                </div>
+                                
+                                <div class="post-actions" style="display: flex; justify-content: flex-end; gap: 10px;">
+                                    <button class="btn-icon btn-delete" onclick="deleteRepost(${index})" style="background: none; border: none; color: #dc3545; cursor: pointer;">🗑️ Удалить</button>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+
+                <div style="display: flex; gap: 15px; margin-top: 20px; flex-wrap: wrap;">
+                    <button class="btn" id="add_btn" style="background: #28a745;">➕ Добавить задачу</button>
+                    <button class="btn" id="publish_btn" style="background: #007bff;">🚀 Создать репосты (${validCount} задач, ${activeBotsCount} ботов)</button>
+                </div>
+
+                <div class="info-block" style="margin-top: 30px;">
+                    <h4>📌 Как это работает:</h4>
+                    <p>• Каждый репост будет опубликован от имени каждого активного бота</p>
+                    <p>• Общее количество операций: задачи × боты</p>
+                    <p>• Поддерживаемые форматы ссылок: vk.com/wall-owner_id_post_id</p>
+                    <p>• Репост делается на стену бота</p>
+                </div>
+            `;
+            
+            document.querySelectorAll('.post-textarea, .link-input').forEach(input => {
+                const index = parseInt(input.dataset.index);
+                const field = input.dataset.field;
+                input.addEventListener('input', (e) => {
+                    updateRepost(index, field, e.target.value);
+                });
+            });
+            
+            document.getElementById('add_btn')?.addEventListener('click', addRepost);
+            document.getElementById('publish_btn')?.addEventListener('click', publishReposts);
+            document.getElementById('import_btn')?.addEventListener('click', importReposts);
+            document.getElementById('clear_all_btn')?.addEventListener('click', clearAll);
+            
+            document.getElementById('example_btn')?.addEventListener('click', () => {
+                document.getElementById('import_text').value = '["Первый репост", "https://vk.com/wall-123456_789"]["Второй репост с \\"кавычками\\"", "https://vk.com/wall-123456_790"]';
+            });
+        }
+        
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+        
+        window.deleteRepost = deleteRepost;
+        window.updateRepost = updateRepost;
+    </script>
+</body>
+</html>

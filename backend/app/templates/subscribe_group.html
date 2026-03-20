@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Подписка на группы | VK Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .group-input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            margin-top: 5px;
+        }
+        .group-preview {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .group-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 15px;
+            font-size: 40px;
+            color: white;
+        }
+        .group-name {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        .group-id {
+            font-size: 13px;
+            color: #888;
+        }
+        .bots-selector {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .bots-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .bot-checkbox {
+            background: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            border: 1px solid #ddd;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .bot-checkbox.selected {
+            background: #28a745;
+            border-color: #28a745;
+            color: white;
+        }
+        .bot-checkbox input {
+            display: none;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .stat-card {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #28a745;
+        }
+        .supported-formats {
+            background: #e7f3ff;
+            border-radius: 12px;
+            padding: 15px 20px;
+            margin: 20px 0;
+            font-size: 13px;
+        }
+        .supported-formats code {
+            background: #fff;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .sidebar ul li a {
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <div class="sidebar">
+                <h3>VK Manager</h3>
+                <ul>
+                    <li><a href="/dashboard">Главная</a></li>
+                    <li><a href="/profile">Редактировать профиль</a></li>
+                    <li><a href="/screenshots">Отправить скрины в тг</a></li>
+                    <li><a href="/tokens">Управление VK токенами</a></li>
+                    <li><a href="/posts">Создать посты</a></li>
+                    <li><a href="/reposts_wall">Создать репосты (на стену)</a></li>
+                    <li><a href="/reposts_dm">Создать репосты (в лс)</a></li>
+                    <li><a href="/comments">Создать комментарии</a></li>
+                    <li><a href="/likes">Поставить лайки</a></li>
+                    <li class="active"><a href="/subscribe_group">Подписаться на группу</a></li>
+                    <li><a href="/statistics">Статистика</a></li>
+                </ul>
+            </div>
+
+            <div class="content">
+                <div id="subscribe-content">
+                    <div class="loading-spinner">⏳ Загрузка...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+    <script>
+        let groupLink = '';
+        let bots = [];
+        let selectedBotIds = [];
+        let loading = false;
+        let groupInfo = null;
+
+        (async function() {
+            const token = getToken();
+            if (!token) {
+                window.location.href = '/login';
+                return;
+            }
+
+            await loadData();
+            render();
+        })();
+
+        async function loadData() {
+            loading = true;
+            render();
+            
+            try {
+                const botsResponse = await fetchWithAuth('/api/bots');
+                if (botsResponse.ok) {
+                    bots = await botsResponse.json();
+                    selectedBotIds = bots.filter(b => b.status === 'active').map(b => b.id);
+                }
+                
+                const savedGroupLink = localStorage.getItem('vk_manager_group_link');
+                if (savedGroupLink) {
+                    groupLink = savedGroupLink;
+                    if (groupLink) {
+                        await fetchGroupInfo(groupLink);
+                    }
+                }
+            } catch (e) {
+                console.error('Ошибка загрузки', e);
+            } finally {
+                loading = false;
+                render();
+            }
+        }
+
+        function saveGroupLinkToStorage() {
+            localStorage.setItem('vk_manager_group_link', groupLink);
+        }
+
+        function updateGroupLink(value) {
+            groupLink = value;
+            saveGroupLinkToStorage();
+            if (groupLink) {
+                fetchGroupInfo(groupLink);
+            } else {
+                groupInfo = null;
+                render();
+            }
+        }
+
+        async function fetchGroupInfo(link) {
+            if (!validateGroupLink(link)) {
+                groupInfo = null;
+                render();
+                return;
+            }
+            
+            // Пока имитация, позже будет реальный запрос к VK API
+            const groupId = extractGroupId(link);
+            if (groupId) {
+                groupInfo = {
+                    id: groupId,
+                    name: `Группа ${groupId}`,
+                    screen_name: groupId,
+                    members_count: Math.floor(Math.random() * 100000)
+                };
+            } else {
+                groupInfo = null;
+            }
+            render();
+        }
+
+        function extractGroupId(link) {
+            const patterns = [
+                /vk\.com\/(club|public|event)(\d+)/,
+                /vk\.com\/([a-zA-Z0-9_.]+)/
+            ];
+            
+            for (const pattern of patterns) {
+                const match = link.match(pattern);
+                if (match) {
+                    return match[1] === 'club' || match[1] === 'public' || match[1] === 'event' ? match[2] : match[1];
+                }
+            }
+            return null;
+        }
+
+        function validateGroupLink(link) {
+            const patterns = [
+                /https?:\/\/(vk\.com|m\.vk\.com)\/club\d+/,
+                /https?:\/\/(vk\.com|m\.vk\.com)\/public\d+/,
+                /https?:\/\/(vk\.com|m\.vk\.com)\/event\d+/,
+                /https?:\/\/(vk\.com|m\.vk\.com)\/[a-zA-Z0-9_.]+/
+            ];
+            return patterns.some(pattern => pattern.test(link));
+        }
+
+        function toggleBot(botId) {
+            const index = selectedBotIds.indexOf(botId);
+            if (index === -1) {
+                selectedBotIds.push(botId);
+            } else {
+                selectedBotIds.splice(index, 1);
+            }
+            render();
+        }
+
+        function selectAllBots() {
+            selectedBotIds = bots.filter(b => b.status === 'active').map(b => b.id);
+            render();
+        }
+
+        async function subscribe() {
+            const isValidLink = validateGroupLink(groupLink);
+            if (!isValidLink) {
+                alert('Введите корректную ссылку на группу VK');
+                return;
+            }
+            
+            const selectedBots = bots.filter(b => selectedBotIds.includes(b.id));
+            if (selectedBots.length === 0) {
+                alert('Выберите хотя бы одного бота');
+                return;
+            }
+            
+            if (!confirm(`Подписать ${selectedBots.length} ботов на группу?\n${groupInfo ? `Группа: ${groupInfo.name}` : groupLink}`)) {
+                return;
+            }
+            
+            alert(`Подписка ${selectedBots.length} ботов на группу...\n(Функция будет реализована позже)`);
+        }
+
+        function render() {
+            const container = document.getElementById('subscribe-content');
+            const activeBots = bots.filter(b => b.status === 'active');
+            const selectedBots = bots.filter(b => selectedBotIds.includes(b.id));
+            const isValidLink = validateGroupLink(groupLink);
+            
+            if (loading) {
+                container.innerHTML = `<div class="loading-spinner">⏳ Загрузка...</div>`;
+                return;
+            }
+            
+            container.innerHTML = `
+                <h1 class="page-title">Подписки на группы</h1>
+                <div class="page-subtitle">Подписывайте ботов на группы VK</div>
+                <hr>
+
+                <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    ⚠️ <strong>Подписка истекла</strong><br>
+                    Оформите подписку для доступа к сервисам<br>
+                    <a href="/subscribe" style="color: #007bff;">Оформить подписку →</a>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value">${activeBots.length}</div>
+                        <div>Всего ботов</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${selectedBots.length}</div>
+                        <div>Будет подписано</div>
+                    </div>
+                </div>
+
+                <!-- Ссылка на группу -->
+                <div class="card">
+                    <h3>🔗 Ссылка на группу VK</h3>
+                    <input type="text" id="group_link" class="group-input" value="${escapeHtml(groupLink)}" placeholder="https://vk.com/club123456 или https://vk.com/durov">
+                    <div class="link-preview" style="margin-top: 10px;">
+                        ${groupLink ? (isValidLink ? '✅ Формат ссылки верный' : '❌ Неверный формат. Пример: https://vk.com/club123456') : 'Введите ссылку на группу VK'}
+                    </div>
+                </div>
+
+                <!-- Информация о группе -->
+                ${groupInfo && isValidLink ? `
+                    <div class="group-preview">
+                        <div class="group-avatar">📱</div>
+                        <div class="group-name">${escapeHtml(groupInfo.name)}</div>
+                        <div class="group-id">@${escapeHtml(groupInfo.screen_name)}</div>
+                        <div class="group-id">ID: ${groupInfo.id}</div>
+                        <div class="group-id">👥 ${groupInfo.members_count.toLocaleString()} подписчиков</div>
+                    </div>
+                ` : ''}
+
+                <!-- Выбор ботов -->
+                <div class="bots-selector">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <h3 style="margin: 0;">🤖 Доступные боты (${activeBots.length})</h3>
+                        <button class="btn" id="select_all_btn" style="background: #6c757d; padding: 5px 15px;">Выбрать всех</button>
+                    </div>
+                    
+                    ${activeBots.length === 0 ? `
+                        <div style="text-align: center; padding: 30px; color: #888;">
+                            <p>❌ Нет доступных ботов с VK токенами</p>
+                            <p style="font-size: 14px;">Добавьте ботов в разделе "Управление VK токенами"</p>
+                        </div>
+                    ` : `
+                        <div class="bots-list">
+                            ${activeBots.map(bot => `
+                                <div class="bot-checkbox ${selectedBotIds.includes(bot.id) ? 'selected' : ''}" onclick="toggleBot(${bot.id})">
+                                    <input type="checkbox" ${selectedBotIds.includes(bot.id) ? 'checked' : ''} style="display: none;">
+                                    🤖 ${escapeHtml(bot.name)}
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="help-text" style="margin-top: 15px;">Выбрано ботов: ${selectedBots.length}</div>
+                    `}
+                </div>
+
+                <button class="btn" id="subscribe_btn" style="background: #28a745; width: 100%; margin-top: 20px;" ${!isValidLink || selectedBots.length === 0 ? 'disabled' : ''}>
+                    ✅ Подписать ботов (${selectedBots.length} ботов)
+                </button>
+
+                <div class="supported-formats">
+                    <h4>📌 Поддерживаемые форматы:</h4>
+                    <p><strong>Группы:</strong> <code>https://vk.com/club123456</code></p>
+                    <p><strong>Публичные страницы:</strong> <code>https://vk.com/public123456</code></p>
+                    <p><strong>Мероприятия:</strong> <code>https://vk.com/event123456</code></p>
+                    <p><strong>Короткие имена:</strong> <code>https://vk.com/durov</code></p>
+                </div>
+
+                <div class="info-block" style="margin-top: 20px;">
+                    <h4>📌 Как это работает:</h4>
+                    <p>• Каждый выбранный бот подпишется на указанную группу</p>
+                    <p>• Используется метод VK API groups.join</p>
+                    <p>• Каждый бот может подписаться только один раз на каждую группу</p>
+                    <p>• Автоматически ограничено количеством доступных ботов</p>
+                </div>
+            `;
+            
+            document.getElementById('group_link')?.addEventListener('input', (e) => {
+                updateGroupLink(e.target.value);
+            });
+            
+            document.getElementById('subscribe_btn')?.addEventListener('click', subscribe);
+            document.getElementById('select_all_btn')?.addEventListener('click', selectAllBots);
+        }
+        
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+        
+        window.toggleBot = toggleBot;
+    </script>
+</body>
+</html>
