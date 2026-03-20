@@ -66,6 +66,17 @@
             color: inherit;
             display: block;
         }
+        .loading-spinner {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+        }
+        .bots-info {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 12px;
+            margin: 15px 0;
+        }
     </style>
 </head>
 <body>
@@ -74,7 +85,7 @@
             <div class="sidebar">
                 <h3>VK Manager</h3>
                 <ul>
-                    <li><a href="/">Главная</a></li>
+                    <li><a href="/dashboard">Главная</a></li>
                     <li><a href="/profile">Редактировать профиль</a></li>
                     <li class="active"><a href="/screenshots">Отправить скрины в тг</a></li>
                     <li><a href="/tokens">Управление VK токенами</a></li>
@@ -85,11 +96,12 @@
                     <li><a href="/likes">Поставить лайки</a></li>
                     <li><a href="/subscribe_group">Подписаться на группу</a></li>
                     <li><a href="/statistics">Статистика</a></li>
+                    <li><a href="/subscribe">💳 Подписка</a></li>
                 </ul>
             </div>
 
             <div class="content" id="screenshots-content">
-                <div id="screenshots-data">Загрузка...</div>
+                <div id="screenshots-data" class="loading-spinner">⏳ Загрузка...</div>
             </div>
         </div>
     </div>
@@ -98,6 +110,9 @@
     <script>
         let selectedFiles = [];
         let distributionMode = 'fair';
+        let bots = [];
+        let loading = false;
+        let sending = false;
 
         (async function() {
             const token = getToken();
@@ -106,11 +121,45 @@
                 return;
             }
 
+            // Проверяем подписку
+            const checkResponse = await fetchWithAuth('/api/subscriptions/check');
+            const checkData = await checkResponse.json();
+            if (!checkData.has_access && !checkData.is_admin) {
+                alert('Для доступа к этой странице необходимо оформить подписку');
+                window.location.href = '/subscribe';
+                return;
+            }
+
+            await loadBots();
             render();
         })();
 
+        async function loadBots() {
+            loading = true;
+            render();
+            
+            try {
+                const response = await fetchWithAuth('/api/bots');
+                if (response.ok) {
+                    bots = await response.json();
+                }
+            } catch (e) {
+                console.error('Ошибка загрузки ботов', e);
+            } finally {
+                loading = false;
+                render();
+            }
+        }
+
         function render() {
             const container = document.getElementById('screenshots-data');
+            const activeBots = bots.filter(b => b.status === 'active');
+            const botCount = activeBots.length;
+            
+            if (loading) {
+                container.innerHTML = `<div class="loading-spinner">⏳ Загрузка ботов...</div>`;
+                return;
+            }
             
             let filesHtml = '';
             if (selectedFiles.length === 0) {
@@ -121,13 +170,25 @@
                     const size = (file.size / 1024).toFixed(2) + ' KB';
                     filesHtml += `
                         <div class="file-item">
-                            <span class="file-name">${file.name}</span>
+                            <span class="file-name">${escapeHtml(file.name)}</span>
                             <span class="file-size">${size}</span>
                             <span class="remove-file" onclick="removeFile(${index})">✕</span>
                         </div>
                     `;
                 });
                 filesHtml += '</div>';
+            }
+
+            // Информация о распределении
+            let distributionInfo = '';
+            if (botCount > 0 && selectedFiles.length > 0) {
+                if (distributionMode === 'fair') {
+                    const filesPerBot = Math.floor(selectedFiles.length / botCount);
+                    const remainingFiles = selectedFiles.length % botCount;
+                    distributionInfo = `<div class="bots-info">📊 Режим "честный": ${selectedFiles.length} файлов на ${botCount} ботов → по ${filesPerBot} файлов${remainingFiles > 0 ? `, +${remainingFiles} файлов первым ботам` : ''}</div>`;
+                } else {
+                    distributionInfo = `<div class="bots-info">📊 Режим "1 файл для всех": каждый бот получит 1 файл (всего ${Math.min(selectedFiles.length, botCount)} файлов из ${selectedFiles.length})</div>`;
+                }
             }
 
             container.innerHTML = `
@@ -139,6 +200,11 @@
                     ⚠️ <strong>Подписка истекла</strong><br>
                     Оформите подписку для доступа к сервисам<br>
                     <a href="/subscribe" style="color: #007bff;">Оформить подписку →</a>
+                </div>
+
+                <div class="bots-info">
+                    🤖 Доступно Telegram ботов: ${botCount}
+                    ${botCount === 0 ? '<br><span style="color: #dc3545;">⚠️ Нет активных ботов. Добавьте ботов в разделе "Управление VK токенами"</span>' : ''}
                 </div>
 
                 <div class="card">
@@ -165,10 +231,11 @@
                             <strong>Поступить как пидарас</strong> (1 файл для всех)
                         </div>
                     </div>
+                    ${distributionInfo}
                 </div>
 
-                <button class="btn" onclick="sendFiles()" style="margin-top: 10px;">
-                    Отправить ${selectedFiles.length} файлов
+                <button class="btn" onclick="sendFiles()" style="margin-top: 10px;" ${botCount === 0 || selectedFiles.length === 0 || sending ? 'disabled' : ''}>
+                    ${sending ? '⏳ Отправка...' : `📤 Отправить ${selectedFiles.length} файлов через ${botCount} ботов`}
                 </button>
             `;
 
@@ -219,15 +286,73 @@
             render();
         };
 
-        window.sendFiles = () => {
+        window.sendFiles = async () => {
             if (selectedFiles.length === 0) {
                 alert('Выберите файлы');
                 return;
             }
-            alert(`Отправка ${selectedFiles.length} файлов в режиме: ${distributionMode === 'fair' ? 'честном' : 'пидарас'}`);
-            selectedFiles = [];
+            
+            const activeBots = bots.filter(b => b.status === 'active');
+            if (activeBots.length === 0) {
+                alert('Нет активных ботов');
+                return;
+            }
+            
+            // Подготовка данных для отправки
+            const formData = new FormData();
+            formData.append('mode', distributionMode);
+            
+            // Добавляем файлы
+            for (let i = 0; i < selectedFiles.length; i++) {
+                formData.append('files', selectedFiles[i]);
+            }
+            
+            // Добавляем ID ботов
+            const botIds = activeBots.map(b => b.id);
+            formData.append('bot_ids', JSON.stringify(botIds));
+            
+            sending = true;
             render();
+            
+            try {
+                const response = await fetchWithAuth('/api/publish/send_to_telegram', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    let successCount = result.results?.filter(r => r.success).length || 0;
+                    let failCount = result.results?.filter(r => !r.success).length || 0;
+                    
+                    if (successCount > 0) {
+                        alert(`✅ Успешно отправлено ${successCount} файлов\n❌ Ошибок: ${failCount}`);
+                        selectedFiles = [];
+                    } else {
+                        alert(`❌ Не удалось отправить файлы\n${result.results?.[0]?.error || 'Неизвестная ошибка'}`);
+                    }
+                } else {
+                    alert(result.detail || 'Ошибка отправки');
+                }
+            } catch (e) {
+                console.error('Ошибка', e);
+                alert('Ошибка соединения с сервером');
+            } finally {
+                sending = false;
+                render();
+            }
         };
+        
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
     </script>
 </body>
 </html>

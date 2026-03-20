@@ -61,4 +61,9 @@ async def subscribe_group_page(request: Request):
 @router.get("/statistics")
 async def statistics_page(request: Request):
     return templates.TemplateResponse("statistics.html", {"request": request})
+
+@router.get("/subscribe")
+async def subscribe_page(request: Request):
+    return templates.TemplateResponse("subscribe.html", {"request": request})
+
 # Заглушки для будущих страни

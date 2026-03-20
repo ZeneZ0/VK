@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Подписка | VK Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .pricing-card {
+            max-width: 500px;
+            margin: 50px auto;
+            background: white;
+            border-radius: 24px;
+            padding: 40px;
+            text-align: center;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+        .price {
+            font-size: 48px;
+            font-weight: bold;
+            color: #007bff;
+            margin: 20px 0;
+        }
+        .price span {
+            font-size: 18px;
+            color: #666;
+        }
+        .features {
+            text-align: left;
+            margin: 30px 0;
+            list-style: none;
+            padding: 0;
+        }
+        .features li {
+            padding: 10px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .features li:before {
+            content: "✓";
+            color: #28a745;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        .btn-subscribe {
+            width: 100%;
+            padding: 15px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        .btn-subscribe:hover {
+            background: #0056b3;
+        }
+        .current-badge {
+            background: #28a745;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+        .sidebar ul li a {
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+        .subscription-info {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <div class="sidebar">
+                <h3>VK Manager</h3>
+                <ul>
+                    <li><a href="/dashboard">Главная</a></li>
+                    <li><a href="/profile">Редактировать профиль</a></li>
+                    <li><a href="/screenshots">Отправить скрины в тг</a></li>
+                    <li><a href="/tokens">Управление VK токенами</a></li>
+                    <li><a href="/posts">Создать посты</a></li>
+                    <li><a href="/reposts_wall">Создать репосты (на стену)</a></li>
+                    <li><a href="/reposts_dm">Создать репосты (в лс)</a></li>
+                    <li><a href="/comments">Создать комментарии</a></li>
+                    <li><a href="/likes">Поставить лайки</a></li>
+                    <li><a href="/subscribe_group">Подписаться на группу</a></li>
+                    <li><a href="/statistics">Статистика</a></li>
+                    <li class="active"><a href="/subscribe">💳 Подписка</a></li>
+                </ul>
+            </div>
+
+            <div class="content">
+                <div id="subscribe-content">
+                    <div class="loading-spinner">⏳ Загрузка...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+    <script>
+        let hasAccess = false;
+        let isAdmin = false;
+        let subscription = null;
+        let loading = false;
+
+        (async function() {
+            const token = getToken();
+            if (!token) {
+                window.location.href = '/login';
+                return;
+            }
+
+            await loadData();
+            render();
+        })();
+
+        async function loadData() {
+            loading = true;
+            render();
+            
+            try {
+                const checkResponse = await fetchWithAuth('/api/subscriptions/check');
+                if (checkResponse.ok) {
+                    const data = await checkResponse.json();
+                    hasAccess = data.has_access;
+                    isAdmin = data.is_admin;
+                }
+                
+                const subResponse = await fetchWithAuth('/api/subscriptions/me');
+                if (subResponse.ok) {
+                    subscription = await subResponse.json();
+                }
+            } catch (e) {
+                console.error('Ошибка загрузки', e);
+            } finally {
+                loading = false;
+                render();
+            }
+        }
+
+        async function subscribe() {
+            try {
+                const response = await fetchWithAuth('/api/subscriptions/create_payment', {
+                    method: 'GET'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.payment_url) {
+                    window.open(data.payment_url, '_blank');
+                    alert('Ссылка на оплату открыта в новой вкладке.\nПосле оплаты нажмите кнопку "Я оплатил" на странице подписки.');
+                } else {
+                    alert(data.detail || 'Ошибка создания платежа');
+                }
+            } catch (e) {
+                console.error('Ошибка', e);
+                alert('Ошибка соединения с сервером');
+            }
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return '—';
+            const date = new Date(dateString);
+            return date.toLocaleDateString('ru-RU');
+        }
+
+        function render() {
+            const container = document.getElementById('subscribe-content');
+            
+            if (loading) {
+                container.innerHTML = `<div class="loading-spinner">⏳ Загрузка...</div>`;
+                return;
+            }
+            
+            if (isAdmin) {
+                container.innerHTML = `
+                    <div class="pricing-card">
+                        <div class="current-badge">👑 Администратор</div>
+                        <h1>Вам не требуется подписка</h1>
+                        <p>Как администратор, вы имеете полный доступ ко всем функциям сервиса без ограничений.</p>
+                        <a href="/dashboard" class="btn" style="display: inline-block; margin-top: 20px;">Перейти в панель управления</a>
+                    </div>
+                `;
+                return;
+            }
+            
+            if (hasAccess && subscription && subscription.is_active) {
+                const endDate = subscription.end_date ? new Date(subscription.end_date) : null;
+                const daysLeft = endDate ? Math.ceil((endDate - new Date()) / (1000 * 60 * 60 * 24)) : 0;
+                
+                container.innerHTML = `
+                    <div class="pricing-card">
+                        <div class="current-badge">✅ Подписка активна</div>
+                        <h1>У вас есть доступ</h1>
+                        <div class="subscription-info">
+                            <p>Подписка действует до: <strong>${formatDate(subscription.end_date)}</strong></p>
+                            <p>Осталось дней: <strong>${daysLeft}</strong></p>
+                        </div>
+                        <button class="btn-subscribe" onclick="subscribe()">Продлить подписку (400 ₽/мес)</button>
+                        <p style="font-size: 12px; color: #888; margin-top: 20px;">После оплаты нажмите "Я оплатил"</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = `
+                <div class="pricing-card">
+                    <h1>Доступ к VK Manager</h1>
+                    <div class="price">400 ₽<span>/мес</span></div>
+                    <ul class="features">
+                        <li>Неограниченное количество ботов</li>
+                        <li>Создание постов и репостов</li>
+                        <li>Автоматические комментарии</li>
+                        <li>Массовые лайки</li>
+                        <li>Подписка на группы</li>
+                        <li>Отправка скриншотов в Telegram</li>
+                        <li>Полная статистика</li>
+                    </ul>
+                    <button class="btn-subscribe" onclick="subscribe()">Оплатить 400 ₽</button>
+                    <p style="font-size: 12px; color: #888; margin-top: 20px;">Оплата через ЮMoney. После оплаты нажмите кнопку ниже.</p>
+                    <hr style="margin: 20px 0;">
+                    <button class="btn" onclick="activateSubscription()" style="background: #28a745;">✅ Я уже оплатил (активировать подписку)</button>
+                </div>
+            `;
+        }
+        
+        window.subscribe = subscribe;
+        
+        async function activateSubscription() {
+            if (!confirm('Вы уверены, что оплатили подписку? После активации подписка будет действовать 30 дней.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetchWithAuth('/api/subscriptions/activate', {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    alert('Подписка активирована! Спасибо за оплату.');
+                    window.location.href = '/dashboard';
+                } else {
+                    alert(data.detail || 'Ошибка активации');
+                }
+            } catch (e) {
+                alert('Ошибка соединения с сервером');
+            }
+        }
+        
+        window.activateSubscription = activateSubscription;
+    </script>
+</body>
+</html>

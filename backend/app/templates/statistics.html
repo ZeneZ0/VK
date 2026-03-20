@@ -135,6 +135,11 @@
             color: inherit;
             display: block;
         }
+        .loading-spinner {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+        }
     </style>
 </head>
 <body>
@@ -154,6 +159,7 @@
                     <li><a href="/likes">Поставить лайки</a></li>
                     <li><a href="/subscribe_group">Подписаться на группу</a></li>
                     <li class="active"><a href="/statistics">Статистика</a></li>
+                    <li><a href="/subscribe">💳 Подписка</a></li>
                 </ul>
             </div>
 
@@ -172,16 +178,18 @@
             successful: 0,
             failed: 0,
             posts_count: 0,
-            reposts_count: 0,
+            reposts_wall_count: 0,
+            reposts_dm_count: 0,
             comments_count: 0,
             likes_count: 0,
+            subscribes_count: 0,
             success_rate: 0
         };
         
         let history = [];
-        let filteredHistory = [];
         let currentPage = 1;
         let itemsPerPage = 20;
+        let totalPages = 1;
         let loading = false;
         
         let filters = {
@@ -198,7 +206,6 @@
             }
 
             await loadData();
-            render();
         })();
 
         async function loadData() {
@@ -206,60 +213,37 @@
             render();
             
             try {
-                // TODO: заменить на реальные API запросы
-                // const statsResponse = await fetchWithAuth('/api/statistics');
-                // stats = await statsResponse.json();
-                // const historyResponse = await fetchWithAuth('/api/statistics/history');
-                // history = await historyResponse.json();
+                // Получаем сводку статистики
+                let overviewUrl = '/api/statistics/overview';
+                const params = new URLSearchParams();
+                if (filters.date_start) params.append('date_start', filters.date_start);
+                if (filters.date_end) params.append('date_end', filters.date_end);
+                if (params.toString()) overviewUrl += '?' + params.toString();
                 
-                // Пока имитация данных
-                stats = {
-                    total_operations: 1247,
-                    successful: 1189,
-                    failed: 58,
-                    posts_count: 342,
-                    reposts_count: 567,
-                    comments_count: 189,
-                    likes_count: 149,
-                    success_rate: 95.3
-                };
-                
-                // Имитация истории операций
-                const types = ['post', 'repost_wall', 'repost_dm', 'comment', 'like', 'subscribe'];
-                const typeNames = {
-                    post: 'Создание поста',
-                    repost_wall: 'Репост на стену',
-                    repost_dm: 'Репост в ЛС',
-                    comment: 'Комментарий',
-                    like: 'Лайк',
-                    subscribe: 'Подписка на группу'
-                };
-                const statuses = ['success', 'error', 'pending'];
-                
-                for (let i = 0; i < 50; i++) {
-                    const type = types[Math.floor(Math.random() * types.length)];
-                    const status = statuses[Math.floor(Math.random() * 10)]; // больше успешных
-                    const date = new Date();
-                    date.setDate(date.getDate() - Math.floor(Math.random() * 30));
-                    
-                    history.push({
-                        id: i + 1,
-                        type: type,
-                        type_name: typeNames[type],
-                        status: status === 0 ? 'success' : (status === 1 ? 'error' : 'success'),
-                        details: type === 'post' ? 'Пост: "Пример текста поста..."' : 
-                                 type === 'repost_wall' ? 'Репост: https://vk.com/wall-123_456' :
-                                 type === 'like' ? 'Лайк: https://vk.com/wall-123_456' :
-                                 'Операция выполнена',
-                        created_at: date.toISOString(),
-                        bot_name: `Бот ${Math.floor(Math.random() * 5) + 1}`
-                    });
+                const overviewResponse = await fetchWithAuth(overviewUrl);
+                if (overviewResponse.ok) {
+                    stats = await overviewResponse.json();
                 }
                 
-                // Сортируем по дате (новые сверху)
-                history.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+                // Получаем историю операций с пагинацией
+                let historyUrl = `/api/statistics/history?page=${currentPage}&limit=${itemsPerPage}`;
+                if (filters.type !== 'all') historyUrl += `&operation_type=${filters.type}`;
+                if (filters.date_start) historyUrl += `&date_start=${filters.date_start}`;
+                if (filters.date_end) historyUrl += `&date_end=${filters.date_end}`;
                 
-                applyFilters();
+                const historyResponse = await fetchWithAuth(historyUrl);
+                if (historyResponse.ok) {
+                    history = await historyResponse.json();
+                }
+                
+                // Получаем общее количество для пагинации
+                const countResponse = await fetchWithAuth(historyUrl.replace('limit=' + itemsPerPage, 'limit=1'));
+                if (countResponse.ok) {
+                    // Пагинация будет на основе длины истории, но для реальной пагинации нужен total count
+                    // Пока используем длину истории для определения страниц
+                    const countData = await countResponse.json();
+                    totalPages = Math.ceil((countData.length || history.length) / itemsPerPage);
+                }
             } catch (e) {
                 console.error('Ошибка загрузки статистики', e);
             } finally {
@@ -269,27 +253,8 @@
         }
 
         function applyFilters() {
-            filteredHistory = history.filter(item => {
-                if (filters.type !== 'all' && item.type !== filters.type) return false;
-                
-                if (filters.date_start) {
-                    const itemDate = new Date(item.created_at);
-                    const startDate = new Date(filters.date_start);
-                    if (itemDate < startDate) return false;
-                }
-                
-                if (filters.date_end) {
-                    const itemDate = new Date(item.created_at);
-                    const endDate = new Date(filters.date_end);
-                    endDate.setHours(23, 59, 59);
-                    if (itemDate > endDate) return false;
-                }
-                
-                return true;
-            });
-            
             currentPage = 1;
-            render();
+            loadData();
         }
 
         function resetFilters() {
@@ -298,22 +263,16 @@
                 date_start: '',
                 date_end: ''
             };
-            applyFilters();
-        }
-
-        function getPaginatedHistory() {
-            const start = (currentPage - 1) * itemsPerPage;
-            const end = start + itemsPerPage;
-            return filteredHistory.slice(start, end);
-        }
-
-        function getTotalPages() {
-            return Math.ceil(filteredHistory.length / itemsPerPage);
+            document.getElementById('filter_type').value = 'all';
+            document.getElementById('filter_date_start').value = '';
+            document.getElementById('filter_date_end').value = '';
+            loadData();
         }
 
         function goToPage(page) {
+            if (page < 1 || page > totalPages) return;
             currentPage = page;
-            render();
+            loadData();
         }
 
         function getStatusBadge(status) {
@@ -323,6 +282,7 @@
         }
 
         function formatDate(dateString) {
+            if (!dateString) return '—';
             const date = new Date(dateString);
             return date.toLocaleString('ru-RU', {
                 day: '2-digit',
@@ -333,15 +293,27 @@
             });
         }
 
+        function getOperationTypeName(type) {
+            const names = {
+                'post': 'Создание поста',
+                'repost_wall': 'Репост на стену',
+                'repost_dm': 'Репост в ЛС',
+                'comment': 'Комментарий',
+                'like': 'Лайк',
+                'subscribe': 'Подписка на группу'
+            };
+            return names[type] || type;
+        }
+
         function render() {
             const container = document.getElementById('statistics-content');
-            const paginatedHistory = getPaginatedHistory();
-            const totalPages = getTotalPages();
             
             if (loading) {
                 container.innerHTML = `<div class="loading-spinner">⏳ Загрузка статистики...</div>`;
                 return;
             }
+            
+            const totalReposts = (stats.reposts_wall_count || 0) + (stats.reposts_dm_count || 0);
             
             container.innerHTML = `
                 <h1 class="page-title">Статистика</h1>
@@ -358,23 +330,23 @@
                 <div class="stats-overview">
                     <div class="overview-card">
                         <div class="overview-label">Всего операций</div>
-                        <div class="overview-value">${stats.total_operations}</div>
-                        <div class="overview-sub">Постов: ${stats.posts_count}</div>
+                        <div class="overview-value">${stats.total_operations || 0}</div>
+                        <div class="overview-sub">Постов: ${stats.posts_count || 0}</div>
                     </div>
                     <div class="overview-card">
                         <div class="overview-label">Успешных операций</div>
-                        <div class="overview-value">${stats.successful}</div>
-                        <div class="overview-sub">Ошибок: ${stats.failed}</div>
+                        <div class="overview-value">${stats.successful || 0}</div>
+                        <div class="overview-sub">Ошибок: ${stats.failed || 0}</div>
                     </div>
                     <div class="overview-card">
                         <div class="overview-label">Процент успеха</div>
-                        <div class="overview-value">${stats.success_rate}%</div>
+                        <div class="overview-value">${stats.success_rate || 0}%</div>
                         <div class="overview-sub">Постов / Репостов</div>
                     </div>
                     <div class="overview-card">
                         <div class="overview-label">Всего действий</div>
-                        <div class="overview-value" style="font-size: 28px;">📝 ${stats.posts_count}</div>
-                        <div class="overview-sub">🔄 ${stats.reposts_count} | 💬 ${stats.comments_count} | ❤️ ${stats.likes_count}</div>
+                        <div class="overview-value" style="font-size: 28px;">📝 ${stats.posts_count || 0}</div>
+                        <div class="overview-sub">🔄 ${totalReposts} | 💬 ${stats.comments_count || 0} | ❤️ ${stats.likes_count || 0}</div>
                     </div>
                 </div>
 
@@ -409,7 +381,7 @@
                 <!-- История операций -->
                 <h3 style="margin: 20px 0 15px 0;">📋 История операций</h3>
                 
-                ${filteredHistory.length === 0 ? `
+                ${history.length === 0 ? `
                     <div class="empty-state">
                         <div style="font-size: 48px; margin-bottom: 15px;">📊</div>
                         <p>Нет операций для отображения</p>
@@ -428,12 +400,12 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                ${paginatedHistory.map(item => `
+                                ${history.map(item => `
                                     <tr>
                                         <td>${formatDate(item.created_at)}</td>
-                                        <td>${item.type_name}</td>
-                                        <td>${item.bot_name}</td>
-                                        <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.details}</td>
+                                        <td>${getOperationTypeName(item.operation_type)}</td>
+                                        <td>${escapeHtml(item.bot_name || '—')}</td>
+                                        <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(item.details || '—')}</td>
                                         <td>${getStatusBadge(item.status)}</td>
                                     </tr>
                                 `).join('')}
@@ -479,6 +451,16 @@
             });
             
             document.getElementById('reset_filters_btn')?.addEventListener('click', resetFilters);
+        }
+        
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
         }
         
         window.goToPage = goToPage;

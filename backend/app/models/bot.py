@@ -24,3 +24,4 @@ class VKBot(Base):
     
     # Связь с пользователем
     user = relationship("User", back_populates="bots")
+    statistics = relationship("Statistic", back_populates="bot", cascade="all, delete-orphan")

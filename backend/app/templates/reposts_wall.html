@@ -78,6 +78,15 @@
             color: inherit;
             display: block;
         }
+        .loading-spinner {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -97,6 +106,7 @@
                     <li><a href="/likes">Поставить лайки</a></li>
                     <li><a href="/subscribe_group">Подписаться на группу</a></li>
                     <li><a href="/statistics">Статистика</a></li>
+                    <li><a href="/subscribe">💳 Подписка</a></li>
                 </ul>
             </div>
 
@@ -113,6 +123,7 @@
         let reposts = [];
         let bots = [];
         let loading = false;
+        let publishing = false;
 
         (async function() {
             const token = getToken();
@@ -121,8 +132,16 @@
                 return;
             }
 
+            // Проверяем подписку
+            const checkResponse = await fetchWithAuth('/api/subscriptions/check');
+            const checkData = await checkResponse.json();
+            if (!checkData.has_access && !checkData.is_admin) {
+                alert('Для доступа к этой странице необходимо оформить подписку');
+                window.location.href = '/subscribe';
+                return;
+            }
+
             await loadData();
-            render();
         })();
 
         async function loadData() {
@@ -235,16 +254,64 @@
             
             const activeBots = bots.filter(b => b.status === 'active');
             if (activeBots.length === 0) {
-                alert('Нет активных ботов. Добавьте VK токены');
+                alert('Нет активных ботов. Добавьте VK токены в разделе "Управление VK токенами"');
                 return;
             }
             
             const totalOperations = validReposts.length * activeBots.length;
-            if (!confirm(`Сделать репост ${validReposts.length} постов через ${activeBots.length} ботов? (Всего операций: ${totalOperations})`)) {
+            if (!confirm(`Сделать репост ${validReposts.length} постов через ${activeBots.length} ботов?\nВсего операций: ${totalOperations}`)) {
                 return;
             }
             
-            alert(`Отправка ${validReposts.length} репостов через ${activeBots.length} ботов...\n(Функция будет реализована позже)`);
+            publishing = true;
+            render();
+            
+            try {
+                const response = await fetchWithAuth('/api/publish/repost', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        reposts: validReposts.map(r => ({
+                            text: r.text,
+                            link: r.link
+                        }))
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    let successCount = 0;
+                    let failCount = 0;
+                    
+                    if (result.results) {
+                        result.results.forEach(r => {
+                            if (r.success) successCount++;
+                            else failCount++;
+                        });
+                    }
+                    
+                    if (successCount > 0) {
+                        alert(`✅ Успешно сделано ${successCount} репостов\n❌ Ошибок: ${failCount}`);
+                        if (failCount === 0) {
+                            // Очищаем только если всё успешно
+                            reposts = [{ text: '', link: '', id: Date.now() }];
+                            saveToStorage();
+                            render();
+                        }
+                    } else {
+                        alert(`❌ Не удалось сделать репосты\n${result.results?.[0]?.error || 'Неизвестная ошибка'}`);
+                    }
+                } else {
+                    alert(result.detail || 'Ошибка создания репостов');
+                }
+            } catch (e) {
+                console.error('Ошибка', e);
+                alert('Ошибка соединения с сервером');
+            } finally {
+                publishing = false;
+                render();
+            }
         }
 
         function render() {
@@ -328,8 +395,10 @@
                 </div>
 
                 <div style="display: flex; gap: 15px; margin-top: 20px; flex-wrap: wrap;">
-                    <button class="btn" id="add_btn" style="background: #28a745;">➕ Добавить задачу</button>
-                    <button class="btn" id="publish_btn" style="background: #007bff;">🚀 Создать репосты (${validCount} задач, ${activeBotsCount} ботов)</button>
+                    <button class="btn" id="add_btn" style="background: #28a745;" ${publishing ? 'disabled' : ''}>➕ Добавить задачу</button>
+                    <button class="btn" id="publish_btn" style="background: #007bff;" ${publishing || validCount === 0 || activeBotsCount === 0 ? 'disabled' : ''}>
+                        ${publishing ? '⏳ Отправка...' : `🚀 Создать репосты (${validCount} задач, ${activeBotsCount} ботов)`}
+                    </button>
                 </div>
 
                 <div class="info-block" style="margin-top: 30px;">

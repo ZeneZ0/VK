@@ -99,6 +99,15 @@
             color: inherit;
             display: block;
         }
+        .loading-spinner {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -118,6 +127,7 @@
                     <li><a href="/likes">Поставить лайки</a></li>
                     <li><a href="/subscribe_group">Подписаться на группу</a></li>
                     <li><a href="/statistics">Статистика</a></li>
+                    <li><a href="/subscribe">💳 Подписка</a></li>
                 </ul>
             </div>
 
@@ -134,6 +144,7 @@
         let posts = [];
         let bots = [];
         let loading = false;
+        let publishing = false;
 
         (async function() {
             const token = getToken();
@@ -142,8 +153,16 @@
                 return;
             }
 
+            // Проверяем подписку
+            const checkResponse = await fetchWithAuth('/api/subscriptions/check');
+            const checkData = await checkResponse.json();
+            if (!checkData.has_access && !checkData.is_admin) {
+                alert('Для доступа к этой странице необходимо оформить подписку');
+                window.location.href = '/subscribe';
+                return;
+            }
+
             await loadData();
-            render();
         })();
 
         async function loadData() {
@@ -254,12 +273,56 @@
             }
             
             const totalOperations = validPosts.length * activeBots.length;
-            if (!confirm(`Опубликовать ${validPosts.length} постов через ${activeBots.length} ботов? (Всего операций: ${totalOperations})`)) {
+            if (!confirm(`Опубликовать ${validPosts.length} постов через ${activeBots.length} ботов?\nВсего операций: ${totalOperations}`)) {
                 return;
             }
             
-            // TODO: заменить на реальную отправку
-            alert(`Отправка ${validPosts.length} постов через ${activeBots.length} ботов...\n(Функция будет реализована позже)`);
+            publishing = true;
+            render();
+            
+            try {
+                const response = await fetchWithAuth('/api/publish/post', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        posts: validPosts.map(p => p.text)
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    let successCount = 0;
+                    let failCount = 0;
+                    
+                    if (result.results) {
+                        result.results.forEach(r => {
+                            if (r.success) successCount++;
+                            else failCount++;
+                        });
+                    }
+                    
+                    if (successCount > 0) {
+                        alert(`✅ Успешно опубликовано ${successCount} постов\n❌ Ошибок: ${failCount}`);
+                        if (failCount === 0) {
+                            // Очищаем только если всё успешно
+                            posts = [{ text: '', id: Date.now() }];
+                            savePostsToStorage();
+                            render();
+                        }
+                    } else {
+                        alert(`❌ Не удалось опубликовать посты\n${result.results?.[0]?.error || 'Неизвестная ошибка'}`);
+                    }
+                } else {
+                    alert(result.detail || 'Ошибка публикации');
+                }
+            } catch (e) {
+                console.error('Ошибка', e);
+                alert('Ошибка соединения с сервером');
+            } finally {
+                publishing = false;
+                render();
+            }
         }
 
         function render() {
@@ -294,9 +357,9 @@
                     <p style="font-size: 14px; color: #666; margin-bottom: 10px;">Формат: <code>["Первый пост"]["Второй пост с \"кавычками\"]["Третий пост\\nс переносом"]</code></p>
                     <textarea id="import_text" class="import-textarea" placeholder='["Пример поста"]["Ещё один пост"]'></textarea>
                     <div style="display: flex; gap: 10px; margin-top: 10px;">
-                        <button class="btn" id="import_btn" style="background: #28a745;">📥 Импортировать</button>
-                        <button class="btn" id="example_btn" style="background: #6c757d;">📋 Пример</button>
-                        <button class="btn btn-outline-danger" id="clear_all_btn">🗑️ Очистить все</button>
+                        <button class="btn" id="import_btn" style="background: #28a745;" ${publishing ? 'disabled' : ''}>📥 Импортировать</button>
+                        <button class="btn" id="example_btn" style="background: #6c757d;" ${publishing ? 'disabled' : ''}>📋 Пример</button>
+                        <button class="btn btn-outline-danger" id="clear_all_btn" ${publishing ? 'disabled' : ''}>🗑️ Очистить все</button>
                     </div>
                 </div>
 
@@ -306,21 +369,23 @@
                             <div class="post-number">Пост #${index + 1}</div>
                             <div style="margin-bottom: 10px;">
                                 <label style="font-weight: 500; margin-bottom: 5px; display: block;">Текст поста:</label>
-                                <textarea class="post-textarea" data-index="${index}" placeholder="Введите текст поста...">${escapeHtml(post.text)}</textarea>
+                                <textarea class="post-textarea" data-index="${index}" placeholder="Введите текст поста..." ${publishing ? 'disabled' : ''}>${escapeHtml(post.text)}</textarea>
                             </div>
                             <div style="font-size: 12px; color: #888;">
                                 Символов: ${post.text.length} | Слов: ${post.text.split(/\s+/).filter(w => w.length > 0).length}
                             </div>
                             <div class="post-actions">
-                                <button class="btn-icon btn-delete" onclick="deletePost(${index})" style="background: none; border: none; color: #dc3545; cursor: pointer;">🗑️ Удалить</button>
+                                <button class="btn-icon btn-delete" onclick="deletePost(${index})" style="background: none; border: none; color: #dc3545; cursor: pointer;" ${publishing ? 'disabled' : ''}>🗑️ Удалить</button>
                             </div>
                         </div>
                     `).join('')}
                 </div>
 
                 <div style="display: flex; gap: 15px; margin-top: 20px; flex-wrap: wrap;">
-                    <button class="btn" id="add_post_btn" style="background: #28a745;">➕ Добавить пост</button>
-                    <button class="btn" id="publish_btn" style="background: #007bff;">🚀 Опубликовать (${validPostsCount} постов, ${activeBotsCount} ботов)</button>
+                    <button class="btn" id="add_post_btn" style="background: #28a745;" ${publishing ? 'disabled' : ''}>➕ Добавить пост</button>
+                    <button class="btn" id="publish_btn" style="background: #007bff;" ${publishing || validPostsCount === 0 || activeBotsCount === 0 ? 'disabled' : ''}>
+                        ${publishing ? '⏳ Публикация...' : `🚀 Опубликовать (${validPostsCount} постов, ${activeBotsCount} ботов)`}
+                    </button>
                 </div>
 
                 <div class="info-block" style="margin-top: 30px;">

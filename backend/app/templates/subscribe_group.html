@@ -111,6 +111,11 @@
             color: inherit;
             display: block;
         }
+        .loading-spinner {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+        }
     </style>
 </head>
 <body>
@@ -130,6 +135,7 @@
                     <li><a href="/likes">Поставить лайки</a></li>
                     <li class="active"><a href="/subscribe_group">Подписаться на группу</a></li>
                     <li><a href="/statistics">Статистика</a></li>
+                    <li><a href="/subscribe">💳 Подписка</a></li>
                 </ul>
             </div>
 
@@ -148,6 +154,7 @@
         let selectedBotIds = [];
         let loading = false;
         let groupInfo = null;
+        let subscribing = false;
 
         (async function() {
             const token = getToken();
@@ -156,8 +163,16 @@
                 return;
             }
 
+            // Проверяем подписку
+            const checkResponse = await fetchWithAuth('/api/subscriptions/check');
+            const checkData = await checkResponse.json();
+            if (!checkData.has_access && !checkData.is_admin) {
+                alert('Для доступа к этой странице необходимо оформить подписку');
+                window.location.href = '/subscribe';
+                return;
+            }
+
             await loadData();
-            render();
         })();
 
         async function loadData() {
@@ -208,15 +223,40 @@
                 return;
             }
             
-            // Пока имитация, позже будет реальный запрос к VK API
+            // Получаем информацию о группе через VK API (публичная информация, не требует токена)
             const groupId = extractGroupId(link);
             if (groupId) {
-                groupInfo = {
-                    id: groupId,
-                    name: `Группа ${groupId}`,
-                    screen_name: groupId,
-                    members_count: Math.floor(Math.random() * 100000)
-                };
+                try {
+                    // Используем VK API без токена для получения публичной информации
+                    const response = await fetch(`https://api.vk.com/method/groups.getById?group_id=${groupId}&v=5.131`);
+                    const data = await response.json();
+                    
+                    if (data.response && data.response.length > 0) {
+                        const group = data.response[0];
+                        groupInfo = {
+                            id: group.id,
+                            name: group.name,
+                            screen_name: group.screen_name,
+                            members_count: group.members_count || 0,
+                            photo: group.photo_50 || ''
+                        };
+                    } else {
+                        groupInfo = {
+                            id: groupId,
+                            name: `Группа ${groupId}`,
+                            screen_name: groupId,
+                            members_count: 0
+                        };
+                    }
+                } catch (e) {
+                    console.error('Ошибка получения информации о группе', e);
+                    groupInfo = {
+                        id: groupId,
+                        name: `Группа ${groupId}`,
+                        screen_name: groupId,
+                        members_count: 0
+                    };
+                }
             } else {
                 groupInfo = null;
             }
@@ -280,7 +320,40 @@
                 return;
             }
             
-            alert(`Подписка ${selectedBots.length} ботов на группу...\n(Функция будет реализована позже)`);
+            subscribing = true;
+            render();
+            
+            try {
+                const response = await fetchWithAuth('/api/publish/join_group', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        group_link: groupLink,
+                        bot_ids: selectedBotIds 
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    let successCount = result.results?.filter(r => r.success).length || 0;
+                    let failCount = result.results?.filter(r => !r.success).length || 0;
+                    
+                    if (successCount > 0) {
+                        alert(`✅ Успешно подписано ${successCount} ботов\n❌ Ошибок: ${failCount}`);
+                    } else {
+                        alert(`❌ Не удалось подписать ботов\n${result.results?.[0]?.error || 'Неизвестная ошибка'}`);
+                    }
+                } else {
+                    alert(result.detail || 'Ошибка подписки');
+                }
+            } catch (e) {
+                console.error('Ошибка', e);
+                alert('Ошибка соединения с сервером');
+            } finally {
+                subscribing = false;
+                render();
+            }
         }
 
         function render() {
@@ -361,8 +434,8 @@
                     `}
                 </div>
 
-                <button class="btn" id="subscribe_btn" style="background: #28a745; width: 100%; margin-top: 20px;" ${!isValidLink || selectedBots.length === 0 ? 'disabled' : ''}>
-                    ✅ Подписать ботов (${selectedBots.length} ботов)
+                <button class="btn" id="subscribe_btn" style="background: #28a745; width: 100%; margin-top: 20px;" ${!isValidLink || selectedBots.length === 0 || subscribing ? 'disabled' : ''}>
+                    ${subscribing ? '⏳ Подписываем...' : `✅ Подписать ботов (${selectedBots.length} ботов)`}
                 </button>
 
                 <div class="supported-formats">

@@ -94,6 +94,15 @@
             color: inherit;
             display: block;
         }
+        .loading-spinner {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -113,6 +122,7 @@
                     <li><a href="/likes">Поставить лайки</a></li>
                     <li><a href="/subscribe_group">Подписаться на группу</a></li>
                     <li><a href="/statistics">Статистика</a></li>
+                    <li><a href="/subscribe">💳 Подписка</a></li>
                 </ul>
             </div>
 
@@ -130,6 +140,7 @@
         let bots = [];
         let postLink = '';
         let loading = false;
+        let publishing = false;
 
         (async function() {
             const token = getToken();
@@ -138,8 +149,16 @@
                 return;
             }
 
+            // Проверяем подписку
+            const checkResponse = await fetchWithAuth('/api/subscriptions/check');
+            const checkData = await checkResponse.json();
+            if (!checkData.has_access && !checkData.is_admin) {
+                alert('Для доступа к этой странице необходимо оформить подписку');
+                window.location.href = '/subscribe';
+                return;
+            }
+
             await loadData();
-            render();
         })();
 
         async function loadData() {
@@ -287,7 +306,53 @@
             
             if (!confirm(message + '\nПродолжить?')) return;
             
-            alert(`Отправка комментариев...\n(Функция будет реализована позже)`);
+            publishing = true;
+            render();
+            
+            try {
+                const response = await fetchWithAuth('/api/publish/comment', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        post_link: postLink,
+                        comments: validComments.map(c => c.text)
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    let successCount = 0;
+                    let failCount = 0;
+                    
+                    if (result.results) {
+                        result.results.forEach(r => {
+                            if (r.success) successCount++;
+                            else failCount++;
+                        });
+                    }
+                    
+                    if (successCount > 0) {
+                        alert(`✅ Успешно опубликовано ${successCount} комментариев\n❌ Ошибок: ${failCount}`);
+                        if (failCount === 0) {
+                            // Очищаем только если всё успешно
+                            comments = [{ text: '', id: Date.now() }];
+                            saveCommentsToStorage();
+                            render();
+                        }
+                    } else {
+                        alert(`❌ Не удалось опубликовать комментарии\n${result.results?.[0]?.error || 'Неизвестная ошибка'}`);
+                    }
+                } else {
+                    alert(result.detail || 'Ошибка публикации комментариев');
+                }
+            } catch (e) {
+                console.error('Ошибка', e);
+                alert('Ошибка соединения с сервером');
+            } finally {
+                publishing = false;
+                render();
+            }
         }
 
         function render() {
@@ -335,7 +400,7 @@
                 <!-- Ссылка на пост -->
                 <div class="card">
                     <h3>🔗 Ссылка на пост VK</h3>
-                    <input type="text" id="post_link" class="post-link-input" value="${escapeHtml(postLink)}" placeholder="https://vk.com/wall-123456_789">
+                    <input type="text" id="post_link" class="post-link-input" value="${escapeHtml(postLink)}" placeholder="https://vk.com/wall-123456_789" ${publishing ? 'disabled' : ''}>
                     <div class="link-preview">
                         ${postLink ? (isValidLink ? '✅ Формат ссылки верный' : '❌ Неверный формат. Пример: https://vk.com/wall-123456_789') : 'Введите ссылку на пост VK'}
                     </div>
@@ -345,10 +410,10 @@
                 <div class="import-section">
                     <h3 style="margin-bottom: 10px;">📥 Массовый импорт комментариев</h3>
                     <p style="font-size: 14px; color: #666; margin-bottom: 10px;">Формат: <code>["Комментарий 1"]["Комментарий 2"]["Комментарий с \\"кавычками\\""]</code></p>
-                    <textarea id="import_text" class="import-textarea" placeholder='["Отличный пост!"]["Спасибо, интересно"]["Подпишусь на вас"]'></textarea>
+                    <textarea id="import_text" class="import-textarea" placeholder='["Отличный пост!"]["Спасибо, интересно"]["Подпишусь на вас"]' ${publishing ? 'disabled' : ''}></textarea>
                     <div style="display: flex; gap: 10px; margin-top: 10px;">
-                        <button class="btn" id="import_btn" style="background: #28a745;">📥 Импортировать</button>
-                        <button class="btn" id="example_btn" style="background: #6c757d;">📋 Пример</button>
+                        <button class="btn" id="import_btn" style="background: #28a745;" ${publishing ? 'disabled' : ''}>📥 Импортировать</button>
+                        <button class="btn" id="example_btn" style="background: #6c757d;" ${publishing ? 'disabled' : ''}>📋 Пример</button>
                     </div>
                 </div>
 
@@ -358,20 +423,22 @@
                         <div class="comment-card">
                             <div class="comment-number">Комментарий #${index + 1}</div>
                             <label style="font-weight: 500; display: block; margin-bottom: 5px;">Текст комментария:</label>
-                            <textarea class="comment-textarea" data-index="${index}" placeholder="Введите текст комментария...">${escapeHtml(comment.text)}</textarea>
+                            <textarea class="comment-textarea" data-index="${index}" placeholder="Введите текст комментария..." ${publishing ? 'disabled' : ''}>${escapeHtml(comment.text)}</textarea>
                             <div style="font-size: 12px; color: #888; margin-top: 8px;">
                                 Символов: ${comment.text.length} | Слов: ${comment.text.split(/\s+/).filter(w => w.length > 0).length}
                             </div>
                             <div style="display: flex; justify-content: flex-end; margin-top: 10px;">
-                                <button class="btn-icon btn-delete" onclick="deleteComment(${index})" style="background: none; border: none; color: #dc3545; cursor: pointer;">🗑️ Удалить</button>
+                                <button class="btn-icon btn-delete" onclick="deleteComment(${index})" style="background: none; border: none; color: #dc3545; cursor: pointer;" ${publishing ? 'disabled' : ''}>🗑️ Удалить</button>
                             </div>
                         </div>
                     `).join('')}
                 </div>
 
                 <div style="display: flex; gap: 15px; margin-top: 20px; flex-wrap: wrap;">
-                    <button class="btn" id="add_comment_btn" style="background: #28a745;">➕ Добавить комментарий</button>
-                    <button class="btn" id="publish_btn" style="background: #007bff;">💬 Опубликовать комментарии</button>
+                    <button class="btn" id="add_comment_btn" style="background: #28a745;" ${publishing ? 'disabled' : ''}>➕ Добавить комментарий</button>
+                    <button class="btn" id="publish_btn" style="background: #007bff;" ${publishing || validComments.length === 0 || activeBots.length === 0 || !isValidLink ? 'disabled' : ''}>
+                        ${publishing ? '⏳ Публикация...' : `💬 Опубликовать комментарии (${Math.min(validComments.length, activeBots.length)} операций)`}
+                    </button>
                 </div>
 
                 <div class="distribution-info">

@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship  # ← ЭТО НАДО ДОБАВИТЬ
+from sqlalchemy.orm import relationship
 from backend.app.core.database import Base
 
 class User(Base):
@@ -18,5 +18,7 @@ class User(Base):
     likes_per_post = Column(Integer, default=0)
     telegram_chat_id = Column(String, nullable=True)
     
-    # Связь с ботами
+    # Связи
     bots = relationship("VKBot", back_populates="user", cascade="all, delete-orphan")
+    subscription = relationship("Subscription", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    statistics = relationship("Statistic", back_populates="user", cascade="all, delete-orphan")

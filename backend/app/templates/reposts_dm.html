@@ -51,6 +51,8 @@
             flex-wrap: wrap;
             gap: 10px;
             margin-top: 15px;
+            max-height: 300px;
+            overflow-y: auto;
         }
         .bot-checkbox {
             background: white;
@@ -100,6 +102,15 @@
             color: inherit;
             display: block;
         }
+        .loading-spinner {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -119,6 +130,7 @@
                     <li><a href="/likes">Поставить лайки</a></li>
                     <li><a href="/subscribe_group">Подписаться на группу</a></li>
                     <li><a href="/statistics">Статистика</a></li>
+                    <li><a href="/subscribe">💳 Подписка</a></li>
                 </ul>
             </div>
 
@@ -137,6 +149,7 @@
         let selectedBotIds = [];
         let globalMessage = '';
         let loading = false;
+        let publishing = false;
 
         (async function() {
             const token = getToken();
@@ -145,8 +158,16 @@
                 return;
             }
 
+            // Проверяем подписку
+            const checkResponse = await fetchWithAuth('/api/subscriptions/check');
+            const checkData = await checkResponse.json();
+            if (!checkData.has_access && !checkData.is_admin) {
+                alert('Для доступа к этой странице необходимо оформить подписку');
+                window.location.href = '/subscribe';
+                return;
+            }
+
             await loadData();
-            render();
         })();
 
         async function loadData() {
@@ -245,24 +266,71 @@
                 return;
             }
             
-            const selectedBots = bots.filter(b => selectedBotIds.includes(b.id));
+            const selectedBots = bots.filter(b => selectedBotIds.includes(b.id) && b.status === 'active');
             if (selectedBots.length === 0) {
-                alert('Выберите хотя бы одного бота');
+                alert('Выберите хотя бы одного активного бота');
                 return;
             }
             
             const totalOperations = validLinks.length * selectedBots.length;
-            if (!confirm(`Сделать репост ${validLinks.length} постов через ${selectedBots.length} ботов?\nВсего операций: ${totalOperations}\nСообщение: ${globalMessage ? 'да' : 'нет'}`)) {
+            if (!confirm(`Сделать репост ${validLinks.length} постов в ЛС через ${selectedBots.length} ботов?\nВсего операций: ${totalOperations}\nСообщение: ${globalMessage ? 'да' : 'нет'}`)) {
                 return;
             }
             
-            alert(`Отправка ${validLinks.length} репостов в ЛС через ${selectedBots.length} ботов...\n(Функция будет реализована позже)`);
+            publishing = true;
+            render();
+            
+            try {
+                const response = await fetchWithAuth('/api/publish/repost_dm', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        links: validLinks.map(l => l.link),
+                        bot_ids: selectedBotIds,
+                        message: globalMessage
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    let successCount = 0;
+                    let failCount = 0;
+                    
+                    if (result.results) {
+                        result.results.forEach(r => {
+                            if (r.success) successCount++;
+                            else failCount++;
+                        });
+                    }
+                    
+                    if (successCount > 0) {
+                        alert(`✅ Успешно сделано ${successCount} репостов в ЛС\n❌ Ошибок: ${failCount}`);
+                        if (failCount === 0) {
+                            // Очищаем только если всё успешно
+                            postLinks = [{ link: '', id: Date.now() }];
+                            saveLinksToStorage();
+                            render();
+                        }
+                    } else {
+                        alert(`❌ Не удалось сделать репосты\n${result.results?.[0]?.error || 'Неизвестная ошибка'}`);
+                    }
+                } else {
+                    alert(result.detail || 'Ошибка создания репостов');
+                }
+            } catch (e) {
+                console.error('Ошибка', e);
+                alert('Ошибка соединения с сервером');
+            } finally {
+                publishing = false;
+                render();
+            }
         }
 
         function render() {
             const container = document.getElementById('dm-content');
             const activeBots = bots.filter(b => b.status === 'active');
-            const selectedBots = bots.filter(b => selectedBotIds.includes(b.id));
+            const selectedBots = bots.filter(b => selectedBotIds.includes(b.id) && b.status === 'active');
             const validLinks = postLinks.filter(l => validateLink(l.link));
             
             if (loading) {
@@ -303,7 +371,7 @@
                 <!-- Ссылки на посты -->
                 <div class="card">
                     <h3>🔗 Ссылки на посты VK</h3>
-                    <p style="font-size: 14px; color: #666; margin-bottom: 15px;">Каждая ссылка с новой строки или через запятую</p>
+                    <p style="font-size: 14px; color: #666; margin-bottom: 15px;">Каждая ссылка будет отправлена каждому боту</p>
                     
                     <div id="links_list">
                         ${postLinks.map((item, index) => {
@@ -322,13 +390,13 @@
                         }).join('')}
                     </div>
                     
-                    <button class="btn" id="add_link_btn" style="background: #28a745; margin-top: 10px;">➕ Добавить ссылку</button>
+                    <button class="btn" id="add_link_btn" style="background: #28a745; margin-top: 10px;" ${publishing ? 'disabled' : ''}>➕ Добавить ссылку</button>
                 </div>
 
                 <!-- Сообщение к репосту -->
                 <div class="card">
                     <h3>💬 Сообщение к репосту (опционально)</h3>
-                    <textarea id="global_message" class="message-input" placeholder="Добавьте текст к репосту (будет добавлен к каждому репосту)...">${escapeHtml(globalMessage)}</textarea>
+                    <textarea id="global_message" class="message-input" placeholder="Добавьте текст к репосту (будет добавлен к каждому репосту)..." ${publishing ? 'disabled' : ''}>${escapeHtml(globalMessage)}</textarea>
                     <div class="help-text">Текст будет добавлен к каждому репосту перед отправкой</div>
                 </div>
 
@@ -336,7 +404,7 @@
                 <div class="bots-selector">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                         <h3 style="margin: 0;">🤖 Доступные боты (${activeBots.length})</h3>
-                        <button class="btn" id="select_all_btn" style="background: #6c757d; padding: 5px 15px;">Выбрать всех</button>
+                        <button class="btn" id="select_all_btn" style="background: #6c757d; padding: 5px 15px;" ${publishing ? 'disabled' : ''}>Выбрать всех</button>
                     </div>
                     
                     ${activeBots.length === 0 ? `
@@ -357,8 +425,8 @@
                     `}
                 </div>
 
-                <button class="btn" id="publish_btn" style="background: #007bff; width: 100%; margin-top: 20px;">
-                    🚀 Сделать репосты (${validLinks.length} ссылок × ${selectedBots.length} ботов = ${validLinks.length * selectedBots.length} операций)
+                <button class="btn" id="publish_btn" style="background: #007bff; width: 100%; margin-top: 20px;" ${publishing || validLinks.length === 0 || selectedBots.length === 0 ? 'disabled' : ''}>
+                    ${publishing ? '⏳ Отправка...' : `🚀 Сделать репосты (${validLinks.length} ссылок × ${selectedBots.length} ботов = ${validLinks.length * selectedBots.length} операций)`}
                 </button>
 
                 <div class="info-block" style="margin-top: 30px;">

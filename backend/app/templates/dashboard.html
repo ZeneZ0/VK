@@ -79,16 +79,58 @@
             color: inherit;
             display: block;
         }
+        .loading-spinner {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+        }
+        .recent-activities {
+            margin-top: 30px;
+        }
+        .activity-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .activity-icon {
+            font-size: 20px;
+        }
+        .activity-details {
+            flex: 1;
+        }
+        .activity-text {
+            font-size: 14px;
+            color: #333;
+        }
+        .activity-date {
+            font-size: 12px;
+            color: #888;
+        }
+        .activity-status {
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 12px;
+        }
+        .status-success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
     </style>
 </head>
 <body>
     <div id="app">
         <div class="container">
-            <!-- Боковое меню со ВСЕМИ ссылками (включая будущие страницы) -->
+            <!-- Боковое меню -->
             <div class="sidebar">
                 <h3>VK Manager</h3>
                 <ul>
-                    <li class="active"><a href="/">Главная</a></li>
+                    <li class="active"><a href="/dashboard">Главная</a></li>
                     <li><a href="/profile">Редактировать профиль</a></li>
                     <li><a href="/screenshots">Отправить скрины в тг</a></li>
                     <li><a href="/tokens">Управление VK токенами</a></li>
@@ -99,18 +141,26 @@
                     <li><a href="/likes">Поставить лайки</a></li>
                     <li><a href="/subscribe_group">Подписаться на группу</a></li>
                     <li><a href="/statistics">Статистика</a></li>
+                    <li><a href="/subscribe">💳 Подписка</a></li>
                 </ul>
             </div>
 
             <!-- Основной контент -->
             <div class="content" id="dashboard-content">
-                <div id="dashboard-data">Загрузка...</div>
+                <div id="dashboard-data" class="loading-spinner">⏳ Загрузка...</div>
             </div>
         </div>
     </div>
 
     <script src="/static/app.js"></script>
     <script>
+        let user = null;
+        let bots = [];
+        let stats = null;
+        let recentActivities = [];
+        let subscriptionStatus = null;
+        let loading = true;
+
         (async function() {
             const token = getToken();
             if (!token) {
@@ -118,101 +168,209 @@
                 return;
             }
 
-            try {
-                const res = await fetchWithAuth('/auth/me');
-                const user = await res.json();
-
-                // Здесь позже будет реальная статистика из БД
-                const stats = {
-                    total_bots: 0,
-                    total_posts: 0,
-                    total_reposts: 0,
-                    total_likes: 0,
-                    subscription_active: false,
-                    subscription_expires: null
-                };
-
-                const isSubActive = stats.subscription_active;
-
-                document.getElementById('dashboard-data').innerHTML = `
-                    <div class="welcome-section">
-                        <h1>Привет, ${user.username}!</h1>
-                        <p>${isSubActive ? 'Добро пожаловать!' : 'Подписка истекла. Оформите новую.'}</p>
-                    </div>
-
-                    ${!isSubActive ? `
-                    <div class="subscription-warning">
-                        ⚠️ <strong>Подписка истекла</strong><br>
-                        Оформите подписку для доступа ко всем сервисам<br>
-                        <a href="/subscribe" style="color: #007bff;">Оформить подписку →</a>
-                    </div>
-                    ` : `
-                    <div class="subscription-warning subscription-active">
-                        ✅ <strong>Подписка активна</strong><br>
-                        Все сервисы доступны
-                    </div>
-                    `}
-
-                    <!-- Статистика -->
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <div class="stat-number">${stats.total_bots}</div>
-                            <div class="stat-label">VK ботов</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number">${stats.total_posts}</div>
-                            <div class="stat-label">Создано постов</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number">${stats.total_reposts}</div>
-                            <div class="stat-label">Сделано репостов</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number">${stats.total_likes}</div>
-                            <div class="stat-label">Поставлено лайков</div>
-                        </div>
-                    </div>
-
-                    <!-- Быстрые действия (ссылки на уже готовые страницы) -->
-                    <h3 style="margin: 30px 0 15px 0;">Быстрые действия</h3>
-                    <div class="quick-actions">
-                        <a href="/profile" class="quick-btn">
-                            <span class="emoji">👤</span>
-                            Редактировать профиль
-                        </a>
-                        <a href="/tokens" class="quick-btn">
-                            <span class="emoji">🤖</span>
-                            Управление токенами
-                        </a>
-                        <a href="/posts" class="quick-btn">
-                            <span class="emoji">📝</span>
-                            Создать пост
-                        </a>
-                        <a href="/screenshots" class="quick-btn">
-                            <span class="emoji">📸</span>
-                            Отправить скрины
-                        </a>
-                        <a href="/likes" class="quick-btn">
-                            <span class="emoji">❤️</span>
-                            Поставить лайки
-                        </a>
-                        <a href="/statistics" class="quick-btn">
-                            <span class="emoji">📊</span>
-                            Статистика
-                        </a>
-                    </div>
-
-                    <!-- Последние активности (заглушка, потом будет из БД) -->
-                    <div class="card" style="margin-top: 30px;">
-                        <h3>Последние активности</h3>
-                        <p style="color: #888; text-align: center; padding: 30px;">Нет активностей за последние 7 дней</p>
-                    </div>
-                `;
-            } catch (e) {
-                console.error('Ошибка загрузки', e);
-                window.location.href = '/login';
-            }
+            await loadData();
+            render();
         })();
+
+        async function loadData() {
+            loading = true;
+            render();
+            
+            try {
+                // Загружаем данные пользователя
+                const userResponse = await fetchWithAuth('/auth/me');
+                if (userResponse.ok) {
+                    user = await userResponse.json();
+                }
+                
+                // Загружаем ботов
+                const botsResponse = await fetchWithAuth('/api/bots');
+                if (botsResponse.ok) {
+                    bots = await botsResponse.json();
+                }
+                
+                // Загружаем статистику
+                const statsResponse = await fetchWithAuth('/api/statistics/overview');
+                if (statsResponse.ok) {
+                    stats = await statsResponse.json();
+                }
+                
+                // Загружаем последние активности
+                const activitiesResponse = await fetchWithAuth('/api/statistics/history?page=1&limit=5');
+                if (activitiesResponse.ok) {
+                    recentActivities = await activitiesResponse.json();
+                }
+                
+                // Загружаем статус подписки
+                const subResponse = await fetchWithAuth('/api/subscriptions/check');
+                if (subResponse.ok) {
+                    subscriptionStatus = await subResponse.json();
+                }
+            } catch (e) {
+                console.error('Ошибка загрузки данных', e);
+            } finally {
+                loading = false;
+                render();
+            }
+        }
+
+        function getActivityIcon(type) {
+            const icons = {
+                'post': '📝',
+                'repost_wall': '🔄',
+                'repost_dm': '💬',
+                'comment': '💭',
+                'like': '❤️',
+                'subscribe': '🔔'
+            };
+            return icons[type] || '📌';
+        }
+
+        function getActivityTypeName(type) {
+            const names = {
+                'post': 'Создание поста',
+                'repost_wall': 'Репост на стену',
+                'repost_dm': 'Репост в ЛС',
+                'comment': 'Комментарий',
+                'like': 'Лайк',
+                'subscribe': 'Подписка на группу'
+            };
+            return names[type] || type;
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return '—';
+            const date = new Date(dateString);
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+            
+            if (diffMins < 1) return 'только что';
+            if (diffMins < 60) return `${diffMins} мин назад`;
+            if (diffHours < 24) return `${diffHours} ч назад`;
+            if (diffDays < 7) return `${diffDays} дн назад`;
+            return date.toLocaleDateString('ru-RU');
+        }
+
+        function render() {
+            const container = document.getElementById('dashboard-data');
+            
+            if (loading) {
+                container.innerHTML = `<div class="loading-spinner">⏳ Загрузка...</div>`;
+                return;
+            }
+            
+            const activeBotsCount = bots.filter(b => b.status === 'active').length;
+            const totalBotsCount = bots.length;
+            const hasSubscription = subscriptionStatus?.has_access || subscriptionStatus?.is_admin;
+            const isAdmin = subscriptionStatus?.is_admin;
+            
+            const totalReposts = (stats?.reposts_wall_count || 0) + (stats?.reposts_dm_count || 0);
+            
+            container.innerHTML = `
+                <div class="welcome-section">
+                    <h1>Привет, ${user?.username || 'Пользователь'}!</h1>
+                    <p>${hasSubscription ? 'Добро пожаловать!' : 'Подписка истекла. Оформите новую.'}</p>
+                </div>
+
+                ${!hasSubscription && !isAdmin ? `
+                <div class="subscription-warning">
+                    ⚠️ <strong>Подписка истекла</strong><br>
+                    Оформите подписку для доступа ко всем сервисам<br>
+                    <a href="/subscribe" style="color: #007bff;">Оформить подписку →</a>
+                </div>
+                ` : hasSubscription ? `
+                <div class="subscription-warning subscription-active">
+                    ✅ <strong>Подписка активна</strong><br>
+                    Все сервисы доступны
+                </div>
+                ` : ''}
+
+                <!-- Статистика -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-number">${totalBotsCount} / ${activeBotsCount}</div>
+                        <div class="stat-label">VK ботов (всего/активных)</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${stats?.posts_count || 0}</div>
+                        <div class="stat-label">Создано постов</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${totalReposts}</div>
+                        <div class="stat-label">Сделано репостов</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${stats?.likes_count || 0}</div>
+                        <div class="stat-label">Поставлено лайков</div>
+                    </div>
+                </div>
+
+                <!-- Быстрые действия -->
+                <h3 style="margin: 30px 0 15px 0;">Быстрые действия</h3>
+                <div class="quick-actions">
+                    <a href="/profile" class="quick-btn">
+                        <span class="emoji">👤</span>
+                        Редактировать профиль
+                    </a>
+                    <a href="/tokens" class="quick-btn">
+                        <span class="emoji">🤖</span>
+                        Управление токенами
+                    </a>
+                    <a href="/posts" class="quick-btn">
+                        <span class="emoji">📝</span>
+                        Создать пост
+                    </a>
+                    <a href="/screenshots" class="quick-btn">
+                        <span class="emoji">📸</span>
+                        Отправить скрины
+                    </a>
+                    <a href="/likes" class="quick-btn">
+                        <span class="emoji">❤️</span>
+                        Поставить лайки
+                    </a>
+                    <a href="/statistics" class="quick-btn">
+                        <span class="emoji">📊</span>
+                        Статистика
+                    </a>
+                </div>
+
+                <!-- Последние активности -->
+                <div class="recent-activities">
+                    <h3 style="margin: 30px 0 15px 0;">📋 Последние активности</h3>
+                    ${recentActivities.length === 0 ? `
+                        <div class="card" style="margin-top: 0;">
+                            <p style="color: #888; text-align: center; padding: 30px;">Нет активностей за последние 7 дней</p>
+                        </div>
+                    ` : `
+                        <div class="card" style="margin-top: 0; padding: 0;">
+                            ${recentActivities.map(activity => `
+                                <div class="activity-item">
+                                    <div class="activity-icon">${getActivityIcon(activity.operation_type)}</div>
+                                    <div class="activity-details">
+                                        <div class="activity-text">
+                                            <strong>${getActivityTypeName(activity.operation_type)}</strong>
+                                            ${activity.details ? ` — ${activity.details.substring(0, 50)}${activity.details.length > 50 ? '...' : ''}` : ''}
+                                        </div>
+                                        <div class="activity-date">${formatDate(activity.created_at)}</div>
+                                    </div>
+                                    <div class="activity-status ${activity.status === 'success' ? 'status-success' : 'status-error'}">
+                                        ${activity.status === 'success' ? '✅ Успешно' : '❌ Ошибка'}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        ${recentActivities.length >= 5 ? `
+                            <div style="text-align: center; margin-top: 15px;">
+                                <a href="/statistics" style="color: #007bff;">Показать все →</a>
+                            </div>
+                        ` : ''}
+                    `}
+                </div>
+            `;
+        }
     </script>
 </body>
 </html>
