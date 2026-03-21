@@ -160,6 +160,7 @@
         let recentActivities = [];
         let subscriptionStatus = null;
         let loading = true;
+        let hasAccess = false;  // для баннера
 
         (async function() {
             const token = getToken();
@@ -169,7 +170,6 @@
             }
 
             await loadData();
-            render();
         })();
 
         async function loadData() {
@@ -205,6 +205,7 @@
                 const subResponse = await fetchWithAuth('/api/subscriptions/check');
                 if (subResponse.ok) {
                     subscriptionStatus = await subResponse.json();
+                    hasAccess = subscriptionStatus.has_access;  // true для ADMIN или при активной подписке
                 }
             } catch (e) {
                 console.error('Ошибка загрузки данных', e);
@@ -264,24 +265,22 @@
             
             const activeBotsCount = bots.filter(b => b.status === 'active').length;
             const totalBotsCount = bots.length;
-            const hasSubscription = subscriptionStatus?.has_access || subscriptionStatus?.is_admin;
-            const isAdmin = subscriptionStatus?.is_admin;
-            
+            const isAdmin = user?.role === 'ADMIN';
             const totalReposts = (stats?.reposts_wall_count || 0) + (stats?.reposts_dm_count || 0);
             
             container.innerHTML = `
                 <div class="welcome-section">
                     <h1>Привет, ${user?.username || 'Пользователь'}!</h1>
-                    <p>${hasSubscription ? 'Добро пожаловать!' : 'Подписка истекла. Оформите новую.'}</p>
+                    <p>${hasAccess ? 'Добро пожаловать!' : 'Подписка истекла. Оформите новую.'}</p>
                 </div>
 
-                ${!hasSubscription && !isAdmin ? `
+                ${!hasAccess && !isAdmin ? `
                 <div class="subscription-warning">
                     ⚠️ <strong>Подписка истекла</strong><br>
                     Оформите подписку для доступа ко всем сервисам<br>
                     <a href="/subscribe" style="color: #007bff;">Оформить подписку →</a>
                 </div>
-                ` : hasSubscription ? `
+                ` : hasAccess ? `
                 <div class="subscription-warning subscription-active">
                     ✅ <strong>Подписка активна</strong><br>
                     Все сервисы доступны

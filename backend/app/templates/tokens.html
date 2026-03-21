@@ -156,12 +156,22 @@
     <script>
         let bots = [];
         let loading = false;
+        let hasAccess = false;  // для баннера
 
         (async function() {
             const token = getToken();
             if (!token) {
                 window.location.href = '/login';
                 return;
+            }
+
+            // Проверяем подписку (для баннера)
+            try {
+                const checkResponse = await fetchWithAuth('/api/subscriptions/check');
+                const checkData = await checkResponse.json();
+                hasAccess = checkData.has_access;  // true для ADMIN или при активной подписке
+            } catch (e) {
+                console.error('Ошибка проверки подписки', e);
             }
 
             await loadBots();
@@ -172,7 +182,6 @@
                 loading = true;
                 render();
                 
-                // Реальный запрос к API
                 const response = await fetchWithAuth('/api/bots');
                 if (response.ok) {
                     bots = await response.json();
@@ -239,8 +248,6 @@
             if (!bot) return;
             
             try {
-                // Меняем статус на "проверка"
-                const originalStatus = bot.status;
                 bot.status = 'checking';
                 render();
                 
@@ -288,11 +295,13 @@
                 <div class="page-subtitle">Добавляйте и управляйте токенами ваших VK ботов</div>
                 <hr>
 
+                ${!hasAccess ? `
                 <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
                     ⚠️ <strong>Подписка истекла</strong><br>
                     Оформите подписку для доступа к сервисам<br>
                     <a href="/subscribe" style="color: #007bff;">Оформить подписку →</a>
                 </div>
+                ` : ''}
 
                 <div class="limit-badge">
                     📊 Использовано ботов: ${bots.length} / ${maxBots}

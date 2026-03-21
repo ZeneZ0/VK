@@ -124,6 +124,7 @@
         let bots = [];
         let loading = false;
         let publishing = false;
+        let hasAccess = false;  // для баннера
 
         (async function() {
             const token = getToken();
@@ -132,13 +133,19 @@
                 return;
             }
 
-            // Проверяем подписку
-            const checkResponse = await fetchWithAuth('/api/subscriptions/check');
-            const checkData = await checkResponse.json();
-            if (!checkData.has_access && !checkData.is_admin) {
-                alert('Для доступа к этой странице необходимо оформить подписку');
-                window.location.href = '/subscribe';
-                return;
+            // Проверяем подписку (для баннера)
+            try {
+                const checkResponse = await fetchWithAuth('/api/subscriptions/check');
+                const checkData = await checkResponse.json();
+                hasAccess = checkData.has_access;  // true для ADMIN или при активной подписке
+                
+                if (!checkData.has_access && !checkData.is_admin) {
+                    alert('Для доступа к этой странице необходимо оформить подписку');
+                    window.location.href = '/subscribe';
+                    return;
+                }
+            } catch (e) {
+                console.error('Ошибка проверки подписки', e);
             }
 
             await loadData();
@@ -294,7 +301,6 @@
                     if (successCount > 0) {
                         alert(`✅ Успешно сделано ${successCount} репостов\n❌ Ошибок: ${failCount}`);
                         if (failCount === 0) {
-                            // Очищаем только если всё успешно
                             reposts = [{ text: '', link: '', id: Date.now() }];
                             saveToStorage();
                             render();
@@ -329,11 +335,13 @@
                 <div class="page-subtitle">Репостите посты через ваших ботов VK</div>
                 <hr>
 
+                ${!hasAccess ? `
                 <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
                     ⚠️ <strong>Подписка истекла</strong><br>
                     Оформите подписку для доступа к сервисам<br>
                     <a href="/subscribe" style="color: #007bff;">Оформить подписку →</a>
                 </div>
+                ` : ''}
 
                 <div class="stats-grid">
                     <div class="stat-card">
@@ -359,9 +367,9 @@
                     <p style="font-size: 14px; color: #666; margin-bottom: 10px;">Формат: <code>["Текст репоста", "https://ссылка.на.пост"]</code></p>
                     <textarea id="import_text" class="import-textarea" placeholder='["Первый репост", "https://vk.com/wall-123456_789"]["Второй репост", "https://vk.com/wall-123456_790"]'></textarea>
                     <div style="display: flex; gap: 10px; margin-top: 10px;">
-                        <button class="btn" id="import_btn" style="background: #28a745;">📥 Импортировать</button>
-                        <button class="btn" id="example_btn" style="background: #6c757d;">📋 Пример</button>
-                        <button class="btn btn-outline-danger" id="clear_all_btn">🗑️ Очистить все</button>
+                        <button class="btn" id="import_btn" style="background: #28a745;" ${publishing ? 'disabled' : ''}>📥 Импортировать</button>
+                        <button class="btn" id="example_btn" style="background: #6c757d;" ${publishing ? 'disabled' : ''}>📋 Пример</button>
+                        <button class="btn btn-outline-danger" id="clear_all_btn" ${publishing ? 'disabled' : ''}>🗑️ Очистить все</button>
                     </div>
                 </div>
 
@@ -374,20 +382,20 @@
                                 
                                 <div style="margin-bottom: 15px;">
                                     <label style="font-weight: 500; display: block; margin-bottom: 5px;">Текст репоста:</label>
-                                    <textarea class="post-textarea" data-index="${index}" data-field="text" style="width: 100%; min-height: 80px; padding: 10px; border: 1px solid #ddd; border-radius: 8px;">${escapeHtml(repost.text)}</textarea>
+                                    <textarea class="post-textarea" data-index="${index}" data-field="text" style="width: 100%; min-height: 80px; padding: 10px; border: 1px solid #ddd; border-radius: 8px;" ${publishing ? 'disabled' : ''}>${escapeHtml(repost.text)}</textarea>
                                     <div style="font-size: 12px; color: #888; margin-top: 5px;">Символов: ${repost.text.length}</div>
                                 </div>
                                 
                                 <div style="margin-bottom: 15px;">
                                     <label style="font-weight: 500; display: block; margin-bottom: 5px;">Ссылка на пост VK:</label>
-                                    <input type="text" class="link-input" data-index="${index}" data-field="link" value="${escapeHtml(repost.link)}" placeholder="https://vk.com/wall-123456_7890">
+                                    <input type="text" class="link-input" data-index="${index}" data-field="link" value="${escapeHtml(repost.link)}" placeholder="https://vk.com/wall-123456_7890" ${publishing ? 'disabled' : ''}>
                                     <div class="link-preview">
                                         ${repost.link ? (isValidLink ? '✅ Ссылка валидна' : '❌ Неверный формат ссылки') : 'Введите ссылку на пост VK'}
                                     </div>
                                 </div>
                                 
                                 <div class="post-actions" style="display: flex; justify-content: flex-end; gap: 10px;">
-                                    <button class="btn-icon btn-delete" onclick="deleteRepost(${index})" style="background: none; border: none; color: #dc3545; cursor: pointer;">🗑️ Удалить</button>
+                                    <button class="btn-icon btn-delete" onclick="deleteRepost(${index})" style="background: none; border: none; color: #dc3545; cursor: pointer;" ${publishing ? 'disabled' : ''}>🗑️ Удалить</button>
                                 </div>
                             </div>
                         `;

@@ -145,6 +145,7 @@
         let bots = [];
         let loading = false;
         let publishing = false;
+        let hasAccess = false;  // для баннера
 
         (async function() {
             const token = getToken();
@@ -153,13 +154,19 @@
                 return;
             }
 
-            // Проверяем подписку
-            const checkResponse = await fetchWithAuth('/api/subscriptions/check');
-            const checkData = await checkResponse.json();
-            if (!checkData.has_access && !checkData.is_admin) {
-                alert('Для доступа к этой странице необходимо оформить подписку');
-                window.location.href = '/subscribe';
-                return;
+            // Проверяем подписку (для баннера)
+            try {
+                const checkResponse = await fetchWithAuth('/api/subscriptions/check');
+                const checkData = await checkResponse.json();
+                hasAccess = checkData.has_access;  // true для ADMIN или при активной подписке
+                
+                if (!checkData.has_access && !checkData.is_admin) {
+                    alert('Для доступа к этой странице необходимо оформить подписку');
+                    window.location.href = '/subscribe';
+                    return;
+                }
+            } catch (e) {
+                console.error('Ошибка проверки подписки', e);
             }
 
             await loadData();
@@ -170,13 +177,11 @@
             render();
             
             try {
-                // Загружаем ботов для публикации
                 const botsResponse = await fetchWithAuth('/api/bots');
                 if (botsResponse.ok) {
                     bots = await botsResponse.json();
                 }
                 
-                // Загружаем сохранённые посты (если есть)
                 const savedPosts = localStorage.getItem('vk_manager_posts');
                 if (savedPosts) {
                     posts = JSON.parse(savedPosts);
@@ -224,7 +229,6 @@
             if (!importText) return;
             
             try {
-                // Парсим формат ["пост1"]["пост2"]
                 const matches = importText.match(/\["(.*?)\"(?:\]|$)/gs);
                 if (matches) {
                     const newPosts = matches.map(match => {
@@ -305,7 +309,6 @@
                     if (successCount > 0) {
                         alert(`✅ Успешно опубликовано ${successCount} постов\n❌ Ошибок: ${failCount}`);
                         if (failCount === 0) {
-                            // Очищаем только если всё успешно
                             posts = [{ text: '', id: Date.now() }];
                             savePostsToStorage();
                             render();
@@ -340,11 +343,13 @@
                 <div class="page-subtitle">Создавайте и публикуйте посты через ваших ботов VK</div>
                 <hr>
 
+                ${!hasAccess ? `
                 <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
                     ⚠️ <strong>Подписка истекла</strong><br>
                     Оформите подписку для доступа к сервисам<br>
                     <a href="/subscribe" style="color: #007bff;">Оформить подписку →</a>
                 </div>
+                ` : ''}
 
                 <div class="posts-stats">
                     <div class="stat-badge">📝 Постов: ${posts.length}</div>
@@ -397,7 +402,6 @@
                 </div>
             `;
             
-            // Добавляем обработчики
             document.querySelectorAll('.post-textarea').forEach(textarea => {
                 const index = parseInt(textarea.dataset.index);
                 textarea.addEventListener('input', (e) => {

@@ -191,6 +191,7 @@
         let itemsPerPage = 20;
         let totalPages = 1;
         let loading = false;
+        let hasAccess = false;  // для баннера
         
         let filters = {
             type: 'all',
@@ -203,6 +204,15 @@
             if (!token) {
                 window.location.href = '/login';
                 return;
+            }
+
+            // Проверяем подписку (для баннера)
+            try {
+                const checkResponse = await fetchWithAuth('/api/subscriptions/check');
+                const checkData = await checkResponse.json();
+                hasAccess = checkData.has_access;  // true для ADMIN или при активной подписке
+            } catch (e) {
+                console.error('Ошибка проверки подписки', e);
             }
 
             await loadData();
@@ -233,16 +243,17 @@
                 
                 const historyResponse = await fetchWithAuth(historyUrl);
                 if (historyResponse.ok) {
-                    history = await historyResponse.json();
+                    const data = await historyResponse.json();
+                    history = Array.isArray(data) ? data : [];
                 }
                 
-                // Получаем общее количество для пагинации
-                const countResponse = await fetchWithAuth(historyUrl.replace('limit=' + itemsPerPage, 'limit=1'));
+                // Получаем общее количество для пагинации (через заголовок или отдельный запрос)
+                const countResponse = await fetchWithAuth(historyUrl.replace(`&limit=${itemsPerPage}`, '&limit=1'));
                 if (countResponse.ok) {
-                    // Пагинация будет на основе длины истории, но для реальной пагинации нужен total count
-                    // Пока используем длину истории для определения страниц
                     const countData = await countResponse.json();
-                    totalPages = Math.ceil((countData.length || history.length) / itemsPerPage);
+                    const totalCount = Array.isArray(countData) ? countData.length : 0;
+                    totalPages = Math.ceil(totalCount / itemsPerPage);
+                    if (totalPages === 0) totalPages = 1;
                 }
             } catch (e) {
                 console.error('Ошибка загрузки статистики', e);
@@ -320,11 +331,13 @@
                 <div class="page-subtitle">Аналитика публикаций и репостов через ваших ботов</div>
                 <hr>
 
+                ${!hasAccess ? `
                 <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
                     ⚠️ <strong>Подписка истекла</strong><br>
                     Оформите подписку для доступа к сервисам<br>
                     <a href="/subscribe" style="color: #007bff;">Оформить подписку →</a>
                 </div>
+                ` : ''}
 
                 <!-- Общая статистика -->
                 <div class="stats-overview">

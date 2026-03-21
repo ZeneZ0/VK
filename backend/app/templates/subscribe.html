@@ -76,6 +76,15 @@
             border-radius: 12px;
             margin-bottom: 20px;
         }
+        .loading-spinner {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -113,6 +122,7 @@
         let isAdmin = false;
         let subscription = null;
         let loading = false;
+        let activating = false;
 
         (async function() {
             const token = getToken();
@@ -122,7 +132,6 @@
             }
 
             await loadData();
-            render();
         })();
 
         async function loadData() {
@@ -175,6 +184,37 @@
             return date.toLocaleDateString('ru-RU');
         }
 
+        async function activateSubscription() {
+            if (activating) return;
+            
+            if (!confirm('Вы уверены, что оплатили подписку? После активации подписка будет действовать 30 дней.')) {
+                return;
+            }
+            
+            activating = true;
+            render();
+            
+            try {
+                const response = await fetchWithAuth('/api/subscriptions/activate', {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    alert('Подписка активирована! Спасибо за оплату.');
+                    window.location.href = '/dashboard';
+                } else {
+                    alert(data.detail || 'Ошибка активации');
+                }
+            } catch (e) {
+                alert('Ошибка соединения с сервером');
+            } finally {
+                activating = false;
+                render();
+            }
+        }
+
         function render() {
             const container = document.getElementById('subscribe-content');
             
@@ -208,7 +248,11 @@
                             <p>Осталось дней: <strong>${daysLeft}</strong></p>
                         </div>
                         <button class="btn-subscribe" onclick="subscribe()">Продлить подписку (400 ₽/мес)</button>
-                        <p style="font-size: 12px; color: #888; margin-top: 20px;">После оплаты нажмите "Я оплатил"</p>
+                        <p style="font-size: 12px; color: #888; margin-top: 20px;">После оплаты нажмите кнопку ниже</p>
+                        <hr style="margin: 20px 0;">
+                        <button class="btn" onclick="activateSubscription()" style="background: #28a745;" ${activating ? 'disabled' : ''}>
+                            ${activating ? '⏳ Активация...' : '✅ Я уже оплатил (активировать подписку)'}
+                        </button>
                     </div>
                 `;
                 return;
@@ -227,39 +271,17 @@
                         <li>Отправка скриншотов в Telegram</li>
                         <li>Полная статистика</li>
                     </ul>
-                    <button class="btn-subscribe" onclick="subscribe()">Оплатить 400 ₽</button>
+                    <button class="btn-subscribe" onclick="subscribe()" ${activating ? 'disabled' : ''}>Оплатить 400 ₽</button>
                     <p style="font-size: 12px; color: #888; margin-top: 20px;">Оплата через ЮMoney. После оплаты нажмите кнопку ниже.</p>
                     <hr style="margin: 20px 0;">
-                    <button class="btn" onclick="activateSubscription()" style="background: #28a745;">✅ Я уже оплатил (активировать подписку)</button>
+                    <button class="btn" onclick="activateSubscription()" style="background: #28a745;" ${activating ? 'disabled' : ''}>
+                        ${activating ? '⏳ Активация...' : '✅ Я уже оплатил (активировать подписку)'}
+                    </button>
                 </div>
             `;
         }
         
         window.subscribe = subscribe;
-        
-        async function activateSubscription() {
-            if (!confirm('Вы уверены, что оплатили подписку? После активации подписка будет действовать 30 дней.')) {
-                return;
-            }
-            
-            try {
-                const response = await fetchWithAuth('/api/subscriptions/activate', {
-                    method: 'POST'
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok) {
-                    alert('Подписка активирована! Спасибо за оплату.');
-                    window.location.href = '/dashboard';
-                } else {
-                    alert(data.detail || 'Ошибка активации');
-                }
-            } catch (e) {
-                alert('Ошибка соединения с сервером');
-            }
-        }
-        
         window.activateSubscription = activateSubscription;
     </script>
 </body>

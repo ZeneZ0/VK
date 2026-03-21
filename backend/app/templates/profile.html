@@ -56,6 +56,11 @@
             color: inherit;
             display: block;
         }
+        .loading-spinner {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+        }
     </style>
 </head>
 <body>
@@ -65,7 +70,7 @@
             <div class="sidebar">
                 <h3>VK Manager</h3>
                 <ul>
-                    <li><a href="/">Главная</a></li>
+                    <li><a href="/dashboard">Главная</a></li>
                     <li class="active"><a href="/profile">Редактировать профиль</a></li>
                     <li><a href="/screenshots">Отправить скрины в тг</a></li>
                     <li><a href="/tokens">Управление VK токенами</a></li>
@@ -82,7 +87,7 @@
 
             <!-- Контент -->
             <div class="content" id="profile-content">
-                <div id="profile-data">Загрузка...</div>
+                <div id="profile-data" class="loading-spinner">⏳ Загрузка...</div>
             </div>
         </div>
     </div>
@@ -97,10 +102,20 @@
             }
 
             try {
+                // Получаем данные пользователя
                 const res = await fetchWithAuth('/auth/me');
                 const user = await res.json();
                 
-                const subscriptionActive = false;
+                // Получаем статус подписки (реальный!)
+                let subscriptionActive = false;
+                try {
+                    const subResponse = await fetchWithAuth('/api/subscriptions/check');
+                    const subData = await subResponse.json();
+                    subscriptionActive = subData.has_access;  // true если ADMIN или есть подписка
+                } catch (e) {
+                    console.error('Ошибка загрузки статуса подписки', e);
+                }
+                
                 const registeredDate = user.registered_at ? new Date(user.registered_at).toLocaleDateString('ru-RU') : '13.11.2025';
 
                 document.getElementById('profile-content').innerHTML = `
@@ -125,15 +140,15 @@
                         <h3>Информация о пользователе</h3>
                         <div class="info-row">
                             <span class="info-label">Имя:</span>
-                            <span class="info-value">${user.username}</span>
+                            <span class="info-value">${escapeHtml(user.username)}</span>
                         </div>
                         <div class="info-row">
                             <span class="info-label">Email:</span>
-                            <span class="info-value">${user.email}</span>
+                            <span class="info-value">${escapeHtml(user.email)}</span>
                         </div>
                         <div class="info-row">
                             <span class="info-label">Роль:</span>
-                            <span class="info-value">${user.role}</span>
+                            <span class="info-value">${escapeHtml(user.role)}</span>
                         </div>
                         <div class="info-row">
                             <span class="info-label">Зарегистрирован:</span>
@@ -149,7 +164,7 @@
                         </div>
                         <div class="settings-row">
                             <label>Telegram Chat ID для уведомлений:</label>
-                            <input type="text" class="input-field" id="telegram_chat" placeholder="Введите ваш Chat ID" value="${user.telegram_chat_id || ''}">
+                            <input type="text" class="input-field" id="telegram_chat" placeholder="Введите ваш Chat ID" value="${escapeHtml(user.telegram_chat_id || '')}">
                             <div class="help-text">Оставьте пустым, чтобы отключить уведомления в Telegram</div>
                         </div>
                     </div>
@@ -179,6 +194,20 @@
                         <p>Для получения Chat ID выберите в Telegram бота @userinfobot</p>
                     </div>
                 `;
+
+                // Загружаем количество ботов
+                try {
+                    const botsResponse = await fetchWithAuth('/api/bots');
+                    if (botsResponse.ok) {
+                        const bots = await botsResponse.json();
+                        const botsCountEl = document.getElementById('bots-count');
+                        if (botsCountEl) {
+                            botsCountEl.textContent = bots.length;
+                        }
+                    }
+                } catch (e) {
+                    console.error('Ошибка загрузки ботов', e);
+                }
 
                 document.getElementById('save-btn')?.addEventListener('click', async () => {
                     const likes_per_post = document.getElementById('likes_per_post').value;
@@ -211,6 +240,16 @@
                 console.error(e);
             }
         })();
+        
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
     </script>
 </body>
 </html>

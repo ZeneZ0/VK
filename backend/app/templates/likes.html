@@ -138,6 +138,7 @@
         let likesPerPost = 1;
         let loading = false;
         let liking = false;
+        let hasAccess = false;  // для баннера
 
         (async function() {
             const token = getToken();
@@ -146,13 +147,19 @@
                 return;
             }
 
-            // Проверяем подписку
-            const checkResponse = await fetchWithAuth('/api/subscriptions/check');
-            const checkData = await checkResponse.json();
-            if (!checkData.has_access && !checkData.is_admin) {
-                alert('Для доступа к этой странице необходимо оформить подписку');
-                window.location.href = '/subscribe';
-                return;
+            // Проверяем подписку (для баннера)
+            try {
+                const checkResponse = await fetchWithAuth('/api/subscriptions/check');
+                const checkData = await checkResponse.json();
+                hasAccess = checkData.has_access;  // true для ADMIN или при активной подписке
+                
+                if (!checkData.has_access && !checkData.is_admin) {
+                    alert('Для доступа к этой странице необходимо оформить подписку');
+                    window.location.href = '/subscribe';
+                    return;
+                }
+            } catch (e) {
+                console.error('Ошибка проверки подписки', e);
             }
 
             await loadData();
@@ -305,7 +312,6 @@
                     if (successCount > 0) {
                         alert(`✅ Успешно поставлено ${successCount} лайков\n❌ Ошибок: ${failCount}`);
                         if (failCount === 0) {
-                            // Очищаем только если всё успешно
                             postLinks = [{ link: '', id: Date.now() }];
                             saveLinksToStorage();
                             render();
@@ -343,11 +349,13 @@
                 <div class="page-subtitle">Ставьте лайки на множество постов VK через всех доступных ботов</div>
                 <hr>
 
+                ${!hasAccess ? `
                 <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
                     ⚠️ <strong>Подписка истекла</strong><br>
                     Оформите подписку для доступа к сервисам<br>
                     <a href="/subscribe" style="color: #007bff;">Оформить подписку →</a>
                 </div>
+                ` : ''}
 
                 <div class="stats-grid">
                     <div class="stat-card">
