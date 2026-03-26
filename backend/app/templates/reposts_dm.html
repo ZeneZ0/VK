@@ -51,7 +51,7 @@
             flex-wrap: wrap;
             gap: 10px;
             margin-top: 15px;
-            max-height: 300px;
+            max-height: 200px;
             overflow-y: auto;
         }
         .bot-checkbox {
@@ -61,6 +61,9 @@
             border: 1px solid #ddd;
             cursor: pointer;
             transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
         .bot-checkbox.selected {
             background: #17a2b8;
@@ -150,7 +153,7 @@
         let globalMessage = '';
         let loading = false;
         let publishing = false;
-        let hasAccess = false;  // для баннера
+        let hasAccess = false;
 
         (async function() {
             const token = getToken();
@@ -159,11 +162,10 @@
                 return;
             }
 
-            // Проверяем подписку (для баннера)
             try {
                 const checkResponse = await fetchWithAuth('/api/subscriptions/check');
                 const checkData = await checkResponse.json();
-                hasAccess = checkData.has_access;  // true для ADMIN или при активной подписке
+                hasAccess = checkData.has_access;
                 
                 if (!checkData.has_access && !checkData.is_admin) {
                     alert('Для доступа к этой странице необходимо оформить подписку');
@@ -379,7 +381,7 @@
                 <!-- Ссылки на посты -->
                 <div class="card">
                     <h3>🔗 Ссылки на посты VK</h3>
-                    <p style="font-size: 14px; color: #666; margin-bottom: 15px;">Каждая ссылка будет отправлена каждому боту</p>
+                    <p style="font-size: 14px; color: #666; margin-bottom: 15px;">Каждая ссылка будет отправлена каждому выбранному боту</p>
                     
                     <div id="links_list">
                         ${postLinks.map((item, index) => {
@@ -387,8 +389,8 @@
                             return `
                                 <div style="margin-bottom: 15px;">
                                     <div style="display: flex; gap: 10px; align-items: flex-start;">
-                                        <input type="text" class="link-input" data-index="${index}" value="${escapeHtml(item.link)}" placeholder="https://vk.com/wall-229000453_1224" style="flex: 1;">
-                                        <button class="btn-icon btn-delete" onclick="deleteLink(${index})" style="background: none; border: none; color: #dc3545; cursor: pointer; font-size: 20px;">🗑️</button>
+                                        <input type="text" class="link-input" data-index="${index}" value="${escapeHtml(item.link)}" placeholder="https://vk.com/wall-229000453_1224" style="flex: 1;" ${publishing ? 'disabled' : ''}>
+                                        <button class="btn-icon btn-delete" onclick="deleteLink(${index})" style="background: none; border: none; color: #dc3545; cursor: pointer; font-size: 20px;" ${publishing ? 'disabled' : ''}>🗑️</button>
                                     </div>
                                     <div class="link-preview">
                                         ${item.link ? (isValid ? '✅ Формат ссылки верный' : '❌ Неверный формат. Пример: https://vk.com/wall-229000453_1224') : 'Введите ссылку на пост VK'}
@@ -411,7 +413,7 @@
                 <!-- Выбор ботов -->
                 <div class="bots-selector">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                        <h3 style="margin: 0;">🤖 Доступные боты (${activeBots.length})</h3>
+                        <h3 style="margin: 0;">🤖 Выберите ботов для репоста (${activeBots.length} доступно)</h3>
                         <button class="btn" id="select_all_btn" style="background: #6c757d; padding: 5px 15px;" ${publishing ? 'disabled' : ''}>Выбрать всех</button>
                     </div>
                     
@@ -425,7 +427,7 @@
                             ${activeBots.map(bot => `
                                 <div class="bot-checkbox ${selectedBotIds.includes(bot.id) ? 'selected' : ''}" onclick="toggleBot(${bot.id})">
                                     <input type="checkbox" ${selectedBotIds.includes(bot.id) ? 'checked' : ''} style="display: none;">
-                                    🤖 ${escapeHtml(bot.name)}
+                                    🤖 ${escapeHtml(bot.name)} ${bot.status === 'active' ? '✅' : '❌'}
                                 </div>
                             `).join('')}
                         </div>

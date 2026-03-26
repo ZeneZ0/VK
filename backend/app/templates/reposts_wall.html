@@ -87,6 +87,39 @@
             opacity: 0.6;
             cursor: not-allowed;
         }
+        .bots-selector {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .bots-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .bot-checkbox {
+            background: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            border: 1px solid #ddd;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .bot-checkbox.selected {
+            background: #28a745;
+            border-color: #28a745;
+            color: white;
+        }
+        .bot-checkbox input {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -122,9 +155,10 @@
     <script>
         let reposts = [];
         let bots = [];
+        let selectedBotIds = [];
         let loading = false;
         let publishing = false;
-        let hasAccess = false;  // для баннера
+        let hasAccess = false;
 
         (async function() {
             const token = getToken();
@@ -133,11 +167,10 @@
                 return;
             }
 
-            // Проверяем подписку (для баннера)
             try {
                 const checkResponse = await fetchWithAuth('/api/subscriptions/check');
                 const checkData = await checkResponse.json();
-                hasAccess = checkData.has_access;  // true для ADMIN или при активной подписке
+                hasAccess = checkData.has_access;
                 
                 if (!checkData.has_access && !checkData.is_admin) {
                     alert('Для доступа к этой странице необходимо оформить подписку');
@@ -159,6 +192,7 @@
                 const botsResponse = await fetchWithAuth('/api/bots');
                 if (botsResponse.ok) {
                     bots = await botsResponse.json();
+                    selectedBotIds = bots.filter(b => b.status === 'active').map(b => b.id);
                 }
                 
                 const savedReposts = localStorage.getItem('vk_manager_reposts_wall');
@@ -251,6 +285,21 @@
             return vkPattern.test(link);
         }
 
+        function toggleBot(botId) {
+            const index = selectedBotIds.indexOf(botId);
+            if (index === -1) {
+                selectedBotIds.push(botId);
+            } else {
+                selectedBotIds.splice(index, 1);
+            }
+            render();
+        }
+
+        function selectAllBots() {
+            selectedBotIds = bots.filter(b => b.status === 'active').map(b => b.id);
+            render();
+        }
+
         async function publishReposts() {
             const validReposts = reposts.filter(r => r.text.trim().length > 0 && validateLink(r.link));
             
@@ -259,14 +308,14 @@
                 return;
             }
             
-            const activeBots = bots.filter(b => b.status === 'active');
-            if (activeBots.length === 0) {
-                alert('Нет активных ботов. Добавьте VK токены в разделе "Управление VK токенами"');
+            const selectedBots = bots.filter(b => selectedBotIds.includes(b.id) && b.status === 'active');
+            if (selectedBots.length === 0) {
+                alert('Выберите хотя бы одного активного бота');
                 return;
             }
             
-            const totalOperations = validReposts.length * activeBots.length;
-            if (!confirm(`Сделать репост ${validReposts.length} постов через ${activeBots.length} ботов?\nВсего операций: ${totalOperations}`)) {
+            const totalOperations = validReposts.length * selectedBots.length;
+            if (!confirm(`Сделать репост ${validReposts.length} постов через ${selectedBots.length} ботов?\nВсего операций: ${totalOperations}`)) {
                 return;
             }
             
@@ -281,7 +330,8 @@
                         reposts: validReposts.map(r => ({
                             text: r.text,
                             link: r.link
-                        }))
+                        })),
+                        bot_ids: selectedBotIds
                     })
                 });
                 
@@ -322,7 +372,8 @@
 
         function render() {
             const container = document.getElementById('reposts-content');
-            const activeBotsCount = bots.filter(b => b.status === 'active').length;
+            const activeBots = bots.filter(b => b.status === 'active');
+            const selectedBots = bots.filter(b => selectedBotIds.includes(b.id) && b.status === 'active');
             const validCount = reposts.filter(r => r.text.trim().length > 0 && validateLink(r.link)).length;
             
             if (loading) {
@@ -353,11 +404,11 @@
                         <div>Валидных</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-value">${activeBotsCount}</div>
-                        <div>Активных ботов</div>
+                        <div class="stat-value">${selectedBots.length}</div>
+                        <div>Выбрано ботов</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-value">${validCount * activeBotsCount}</div>
+                        <div class="stat-value">${validCount * selectedBots.length}</div>
                         <div>Всего операций</div>
                     </div>
                 </div>
@@ -371,6 +422,31 @@
                         <button class="btn" id="example_btn" style="background: #6c757d;" ${publishing ? 'disabled' : ''}>📋 Пример</button>
                         <button class="btn btn-outline-danger" id="clear_all_btn" ${publishing ? 'disabled' : ''}>🗑️ Очистить все</button>
                     </div>
+                </div>
+
+                <!-- Выбор ботов -->
+                <div class="bots-selector">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <h3 style="margin: 0;">🤖 Выберите ботов для репоста (${activeBots.length} доступно)</h3>
+                        <button class="btn" id="select_all_btn" style="background: #6c757d; padding: 5px 15px;" ${publishing ? 'disabled' : ''}>Выбрать всех</button>
+                    </div>
+                    
+                    ${activeBots.length === 0 ? `
+                        <div style="text-align: center; padding: 30px; color: #888;">
+                            <p>❌ Нет доступных ботов с VK токенами</p>
+                            <p style="font-size: 14px;">Добавьте ботов в разделе "Управление VK токенами"</p>
+                        </div>
+                    ` : `
+                        <div class="bots-list">
+                            ${activeBots.map(bot => `
+                                <div class="bot-checkbox ${selectedBotIds.includes(bot.id) ? 'selected' : ''}" onclick="toggleBot(${bot.id})">
+                                    <input type="checkbox" ${selectedBotIds.includes(bot.id) ? 'checked' : ''} style="display: none;">
+                                    🤖 ${escapeHtml(bot.name)} ${bot.status === 'active' ? '✅' : '❌'}
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="help-text" style="margin-top: 15px;">Выбрано ботов: ${selectedBots.length}</div>
+                    `}
                 </div>
 
                 <div id="reposts_list">
@@ -404,15 +480,15 @@
 
                 <div style="display: flex; gap: 15px; margin-top: 20px; flex-wrap: wrap;">
                     <button class="btn" id="add_btn" style="background: #28a745;" ${publishing ? 'disabled' : ''}>➕ Добавить задачу</button>
-                    <button class="btn" id="publish_btn" style="background: #007bff;" ${publishing || validCount === 0 || activeBotsCount === 0 ? 'disabled' : ''}>
-                        ${publishing ? '⏳ Отправка...' : `🚀 Создать репосты (${validCount} задач, ${activeBotsCount} ботов)`}
+                    <button class="btn" id="publish_btn" style="background: #007bff;" ${publishing || validCount === 0 || selectedBots.length === 0 ? 'disabled' : ''}>
+                        ${publishing ? '⏳ Отправка...' : `🚀 Создать репосты (${validCount} задач, ${selectedBots.length} ботов)`}
                     </button>
                 </div>
 
                 <div class="info-block" style="margin-top: 30px;">
                     <h4>📌 Как это работает:</h4>
-                    <p>• Каждый репост будет опубликован от имени каждого активного бота</p>
-                    <p>• Общее количество операций: задачи × боты</p>
+                    <p>• Каждый репост будет опубликован от имени каждого выбранного бота</p>
+                    <p>• Общее количество операций: задачи × выбранные боты</p>
                     <p>• Поддерживаемые форматы ссылок: vk.com/wall-owner_id_post_id</p>
                     <p>• Репост делается на стену бота</p>
                 </div>
@@ -430,6 +506,7 @@
             document.getElementById('publish_btn')?.addEventListener('click', publishReposts);
             document.getElementById('import_btn')?.addEventListener('click', importReposts);
             document.getElementById('clear_all_btn')?.addEventListener('click', clearAll);
+            document.getElementById('select_all_btn')?.addEventListener('click', selectAllBots);
             
             document.getElementById('example_btn')?.addEventListener('click', () => {
                 document.getElementById('import_text').value = '["Первый репост", "https://vk.com/wall-123456_789"]["Второй репост с \\"кавычками\\"", "https://vk.com/wall-123456_790"]';
@@ -448,6 +525,7 @@
         
         window.deleteRepost = deleteRepost;
         window.updateRepost = updateRepost;
+        window.toggleBot = toggleBot;
     </script>
 </body>
 </html>

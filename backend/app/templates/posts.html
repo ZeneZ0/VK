@@ -108,6 +108,39 @@
             opacity: 0.6;
             cursor: not-allowed;
         }
+        .bots-selector {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .bots-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .bot-checkbox {
+            background: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            border: 1px solid #ddd;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .bot-checkbox.selected {
+            background: #007bff;
+            border-color: #007bff;
+            color: white;
+        }
+        .bot-checkbox input {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -143,9 +176,10 @@
     <script>
         let posts = [];
         let bots = [];
+        let selectedBotIds = [];
         let loading = false;
         let publishing = false;
-        let hasAccess = false;  // для баннера
+        let hasAccess = false;
 
         (async function() {
             const token = getToken();
@@ -154,11 +188,10 @@
                 return;
             }
 
-            // Проверяем подписку (для баннера)
             try {
                 const checkResponse = await fetchWithAuth('/api/subscriptions/check');
                 const checkData = await checkResponse.json();
-                hasAccess = checkData.has_access;  // true для ADMIN или при активной подписке
+                hasAccess = checkData.has_access;
                 
                 if (!checkData.has_access && !checkData.is_admin) {
                     alert('Для доступа к этой странице необходимо оформить подписку');
@@ -180,6 +213,8 @@
                 const botsResponse = await fetchWithAuth('/api/bots');
                 if (botsResponse.ok) {
                     bots = await botsResponse.json();
+                    // По умолчанию выбираем всех активных ботов
+                    selectedBotIds = bots.filter(b => b.status === 'active').map(b => b.id);
                 }
                 
                 const savedPosts = localStorage.getItem('vk_manager_posts');
@@ -262,6 +297,21 @@
             }
         }
 
+        function toggleBot(botId) {
+            const index = selectedBotIds.indexOf(botId);
+            if (index === -1) {
+                selectedBotIds.push(botId);
+            } else {
+                selectedBotIds.splice(index, 1);
+            }
+            render();
+        }
+
+        function selectAllBots() {
+            selectedBotIds = bots.filter(b => b.status === 'active').map(b => b.id);
+            render();
+        }
+
         async function publishPosts() {
             const validPosts = posts.filter(p => p.text.trim().length > 0);
             
@@ -270,14 +320,14 @@
                 return;
             }
             
-            const activeBots = bots.filter(b => b.status === 'active');
-            if (activeBots.length === 0) {
-                alert('Нет активных ботов. Добавьте VK токены в разделе "Управление VK токенами"');
+            const selectedBots = bots.filter(b => selectedBotIds.includes(b.id) && b.status === 'active');
+            if (selectedBots.length === 0) {
+                alert('Выберите хотя бы одного активного бота');
                 return;
             }
             
-            const totalOperations = validPosts.length * activeBots.length;
-            if (!confirm(`Опубликовать ${validPosts.length} постов через ${activeBots.length} ботов?\nВсего операций: ${totalOperations}`)) {
+            const totalOperations = validPosts.length * selectedBots.length;
+            if (!confirm(`Опубликовать ${validPosts.length} постов через ${selectedBots.length} ботов?\nВсего операций: ${totalOperations}`)) {
                 return;
             }
             
@@ -289,7 +339,8 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
-                        posts: validPosts.map(p => p.text)
+                        posts: validPosts.map(p => p.text),
+                        bot_ids: selectedBotIds
                     })
                 });
                 
@@ -330,7 +381,8 @@
 
         function render() {
             const container = document.getElementById('posts-content');
-            const activeBotsCount = bots.filter(b => b.status === 'active').length;
+            const activeBots = bots.filter(b => b.status === 'active');
+            const selectedBots = bots.filter(b => selectedBotIds.includes(b.id) && b.status === 'active');
             const validPostsCount = posts.filter(p => p.text.trim().length > 0).length;
             
             if (loading) {
@@ -354,7 +406,7 @@
                 <div class="posts-stats">
                     <div class="stat-badge">📝 Постов: ${posts.length}</div>
                     <div class="stat-badge">✅ Валидных: ${validPostsCount}</div>
-                    <div class="stat-badge">🤖 Активных ботов: ${activeBotsCount}</div>
+                    <div class="stat-badge">🤖 Выбрано ботов: ${selectedBots.length} / ${activeBots.length}</div>
                 </div>
 
                 <div class="import-section">
@@ -366,6 +418,31 @@
                         <button class="btn" id="example_btn" style="background: #6c757d;" ${publishing ? 'disabled' : ''}>📋 Пример</button>
                         <button class="btn btn-outline-danger" id="clear_all_btn" ${publishing ? 'disabled' : ''}>🗑️ Очистить все</button>
                     </div>
+                </div>
+
+                <!-- Выбор ботов -->
+                <div class="bots-selector">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <h3 style="margin: 0;">🤖 Выберите ботов для публикации (${activeBots.length} доступно)</h3>
+                        <button class="btn" id="select_all_btn" style="background: #6c757d; padding: 5px 15px;" ${publishing ? 'disabled' : ''}>Выбрать всех</button>
+                    </div>
+                    
+                    ${activeBots.length === 0 ? `
+                        <div style="text-align: center; padding: 30px; color: #888;">
+                            <p>❌ Нет доступных ботов с VK токенами</p>
+                            <p style="font-size: 14px;">Добавьте ботов в разделе "Управление VK токенами"</p>
+                        </div>
+                    ` : `
+                        <div class="bots-list">
+                            ${activeBots.map(bot => `
+                                <div class="bot-checkbox ${selectedBotIds.includes(bot.id) ? 'selected' : ''}" onclick="toggleBot(${bot.id})">
+                                    <input type="checkbox" ${selectedBotIds.includes(bot.id) ? 'checked' : ''} style="display: none;">
+                                    🤖 ${escapeHtml(bot.name)} ${bot.status === 'active' ? '✅' : '❌'}
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="help-text" style="margin-top: 15px;">Выбрано ботов: ${selectedBots.length}</div>
+                    `}
                 </div>
 
                 <div id="posts_list">
@@ -388,15 +465,15 @@
 
                 <div style="display: flex; gap: 15px; margin-top: 20px; flex-wrap: wrap;">
                     <button class="btn" id="add_post_btn" style="background: #28a745;" ${publishing ? 'disabled' : ''}>➕ Добавить пост</button>
-                    <button class="btn" id="publish_btn" style="background: #007bff;" ${publishing || validPostsCount === 0 || activeBotsCount === 0 ? 'disabled' : ''}>
-                        ${publishing ? '⏳ Публикация...' : `🚀 Опубликовать (${validPostsCount} постов, ${activeBotsCount} ботов)`}
+                    <button class="btn" id="publish_btn" style="background: #007bff;" ${publishing || validPostsCount === 0 || selectedBots.length === 0 ? 'disabled' : ''}>
+                        ${publishing ? '⏳ Публикация...' : `🚀 Опубликовать (${validPostsCount} постов, ${selectedBots.length} ботов)`}
                     </button>
                 </div>
 
                 <div class="info-block" style="margin-top: 30px;">
                     <h4>📌 Примечания:</h4>
-                    <p>• Каждый пост будет опубликован от имени каждого активного бота</p>
-                    <p>• Общее количество операций: посты × боты</p>
+                    <p>• Каждый пост будет опубликован от имени каждого выбранного бота</p>
+                    <p>• Общее количество операций: посты × выбранные боты</p>
                     <p>• Поддерживаются переносы строк и специальные символы</p>
                     <p>• Для экранирования кавычек используйте обратную косую черту: <code>\\"</code></p>
                 </div>
@@ -413,6 +490,7 @@
             document.getElementById('publish_btn')?.addEventListener('click', publishPosts);
             document.getElementById('import_btn')?.addEventListener('click', importPosts);
             document.getElementById('clear_all_btn')?.addEventListener('click', clearAllPosts);
+            document.getElementById('select_all_btn')?.addEventListener('click', selectAllBots);
             
             document.getElementById('example_btn')?.addEventListener('click', () => {
                 document.getElementById('import_text').value = '["Первый пост"]["Второй пост с \\"кавычками\\""]["Третий пост\\nс переносом строки"]';
@@ -431,6 +509,7 @@
         
         window.deletePost = deletePost;
         window.updatePostText = updatePostText;
+        window.toggleBot = toggleBot;
     </script>
 </body>
 </html>

@@ -53,7 +53,7 @@
             flex-wrap: wrap;
             gap: 10px;
             margin-top: 15px;
-            max-height: 300px;
+            max-height: 200px;
             overflow-y: auto;
         }
         .bot-checkbox {
@@ -155,7 +155,7 @@
         let loading = false;
         let groupInfo = null;
         let subscribing = false;
-        let hasAccess = false;  // для баннера
+        let hasAccess = false;
 
         (async function() {
             const token = getToken();
@@ -164,11 +164,10 @@
                 return;
             }
 
-            // Проверяем подписку (для баннера)
             try {
                 const checkResponse = await fetchWithAuth('/api/subscriptions/check');
                 const checkData = await checkResponse.json();
-                hasAccess = checkData.has_access;  // true для ADMIN или при активной подписке
+                hasAccess = checkData.has_access;
                 
                 if (!checkData.has_access && !checkData.is_admin) {
                     alert('Для доступа к этой странице необходимо оформить подписку');
@@ -315,9 +314,9 @@
                 return;
             }
             
-            const selectedBots = bots.filter(b => selectedBotIds.includes(b.id));
+            const selectedBots = bots.filter(b => selectedBotIds.includes(b.id) && b.status === 'active');
             if (selectedBots.length === 0) {
-                alert('Выберите хотя бы одного бота');
+                alert('Выберите хотя бы одного активного бота');
                 return;
             }
             
@@ -346,6 +345,13 @@
                     
                     if (successCount > 0) {
                         alert(`✅ Успешно подписано ${successCount} ботов\n❌ Ошибок: ${failCount}`);
+                        if (failCount === 0) {
+                            // Можно очистить ссылку после успешной подписки (опционально)
+                            // groupLink = '';
+                            // saveGroupLinkToStorage();
+                            // groupInfo = null;
+                            // render();
+                        }
                     } else {
                         alert(`❌ Не удалось подписать ботов\n${result.results?.[0]?.error || 'Неизвестная ошибка'}`);
                     }
@@ -364,7 +370,7 @@
         function render() {
             const container = document.getElementById('subscribe-content');
             const activeBots = bots.filter(b => b.status === 'active');
-            const selectedBots = bots.filter(b => selectedBotIds.includes(b.id));
+            const selectedBots = bots.filter(b => selectedBotIds.includes(b.id) && b.status === 'active');
             const isValidLink = validateGroupLink(groupLink);
             
             if (loading) {
@@ -392,7 +398,7 @@
                     </div>
                     <div class="stat-card">
                         <div class="stat-value">${selectedBots.length}</div>
-                        <div>Будет подписано</div>
+                        <div>Выбрано ботов</div>
                     </div>
                 </div>
 
@@ -419,7 +425,7 @@
                 <!-- Выбор ботов -->
                 <div class="bots-selector">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                        <h3 style="margin: 0;">🤖 Доступные боты (${activeBots.length})</h3>
+                        <h3 style="margin: 0;">🤖 Выберите ботов для подписки (${activeBots.length} доступно)</h3>
                         <button class="btn" id="select_all_btn" style="background: #6c757d; padding: 5px 15px;" ${subscribing ? 'disabled' : ''}>Выбрать всех</button>
                     </div>
                     
@@ -433,7 +439,7 @@
                             ${activeBots.map(bot => `
                                 <div class="bot-checkbox ${selectedBotIds.includes(bot.id) ? 'selected' : ''}" onclick="toggleBot(${bot.id})">
                                     <input type="checkbox" ${selectedBotIds.includes(bot.id) ? 'checked' : ''} style="display: none;">
-                                    🤖 ${escapeHtml(bot.name)}
+                                    🤖 ${escapeHtml(bot.name)} ${bot.status === 'active' ? '✅' : '❌'}
                                 </div>
                             `).join('')}
                         </div>
@@ -458,7 +464,7 @@
                     <p>• Каждый выбранный бот подпишется на указанную группу</p>
                     <p>• Используется метод VK API groups.join</p>
                     <p>• Каждый бот может подписаться только один раз на каждую группу</p>
-                    <p>• Автоматически ограничено количеством доступных ботов</p>
+                    <p>• Автоматически ограничено количеством выбранных ботов</p>
                 </div>
             `;
             
